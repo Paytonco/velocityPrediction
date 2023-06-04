@@ -1,5 +1,3 @@
-# come up with a vector field v(t,x) = [1, x]
-# instantiate a bunch of points at random (uniform random on [-5,5] x [-5,5])
 import time
 import typing
 
@@ -39,6 +37,10 @@ class Batch(typing.NamedTuple):
 
 
 class VectorData(Dataset):
+    """
+    Vector field v(t,x) = [1, x] where points (t, x) are sampled from
+    [-5, 5] x [-5, 5] uniformly at random.
+    """
     def __init__(self, dim, num_neighbors, size):
         """
         Parameters
@@ -46,7 +48,11 @@ class VectorData(Dataset):
         dim: int
             The spatial dimensions of the position and velocity vectors.
 
-        num_samples: int
+        num_neighbors: int
+            The number of points to use for finding the velocity at a given
+            point.
+
+        size: int
             The number of vectors to generate.
         """
         super().__init__()
@@ -75,10 +81,18 @@ class VectorData(Dataset):
         return normalize(velocities)
 
     def generate_neighbors(self):
+        """
+        Generate a set of neighboring points for each point from
+        :func:`generate_positions`.
+        """
         return 10 * (torch.rand(self.size, self.num_neighbors, self.dim) - 0.5)
 
 
 class VelVector(nn.Module):
+    """
+    Model for predicting the unit velocity vector of a point based on a set
+    of neighboring points.
+    """
     def __init__(self, vector_dims, num_neighbors):
         super().__init__()
 
@@ -87,7 +101,10 @@ class VelVector(nn.Module):
 
         self.model = nn.Sequential(
             nn.Linear(vector_dims, 5),
-            nn.Linear(5, 1)
+            nn.ReLU(),
+            nn.Linear(5, 5),
+            nn.ReLU(),
+            nn.Linear(5, 1),
         )
 
     def norm_diffs(self, positions, neighbors):
@@ -101,6 +118,9 @@ class VelVector(nn.Module):
 
 
 def calc_loss(vel_given, vel_predicted):
+    """
+    Mean of the square distance between the velocity vectors.
+    """
     dist = ((vel_given - vel_predicted)**2).sum(-1).mean()
     loss = dist  # + angle
 
@@ -112,6 +132,9 @@ def get_model(dim, num_neighbors):
 
 
 def setup(cfg):
+    """
+    Set some global settings.
+    """
     # Reproduciblity
     np.random.seed(cfg.setup.rng_seed)
     torch.manual_seed(cfg.setup.rng_seed)
@@ -126,13 +149,16 @@ def collate_fn(cfg, arg):
 
 
 def load(cfg):
+    """
+    Create the dataloaders, and construct the model.
+    """
     dataset = VectorData(cfg.dataset.dim, cfg.dataset.num_neighbors, cfg.dataset.size)
 
     train = dataset[:cfg.dataset.size_train]
     val = dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
     test = dataset[-cfg.dataset.size_test:]
 
-    # shuffle=True flips the order of the dataset's __getitem__ result
+    # FIXME: setting shuffle=True flips the order of the dataset's __getitem__ result
     train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
