@@ -1,6 +1,8 @@
 # come up with a vector field v(t,x) = [1, x]
 # instantiate a bunch of points at random (uniform random on [-5,5] x [-5,5])
 import time
+import typing
+
 import hydra
 from omegaconf import OmegaConf
 import numpy as np
@@ -9,8 +11,35 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 
+def normalize(vec):
+    return nn.functional.normalize(vec, dim=-1)
+
+
+class Batch(typing.NamedTuple):
+    positions: torch.Tensor
+    neighbors: torch.Tensor
+    velocities: torch.Tensor
+
+    def to(self, device):
+        return Batch(
+            positions=self.positions.to(device),
+            neighbors=self.neighbors.to(device),
+            velocities=self.velocities.to(device)
+        )
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}' +
+            '(' +
+            f'positions={self.positions.shape}, ' +
+            f'neighbors={self.neighbors.shape}, ' +
+            f'velocities={self.velocities.shape}' +
+            ')'
+        )
+
+
 class VectorData(Dataset):
-    def __init__(self, dim, size):
+    def __init__(self, dim, num_neighbors, size):
         """
         Parameters
         ----------
@@ -22,16 +51,19 @@ class VectorData(Dataset):
         """
         super().__init__()
         self.dim = dim
+        self.num_neighbors = num_neighbors
         self.size = size
 
         self.positions = self.generate_positions()
         self.velocities = self.generate_velocities()
+        self.neighbors = self.generate_neighbors()
 
     def __len__(self):
         return self.size
 
     def __getitem__(self, idx):
-        datum, target = self.positions[idx], self.velocities[idx]
+        datum = self.positions[idx], self.neighbors[idx]
+        target = self.velocities[idx]
         return datum, target
 
     def generate_positions(self):
@@ -40,10 +72,10 @@ class VectorData(Dataset):
     def generate_velocities(self):
         velocities = self.positions.clone()
         velocities[:, 0] = 1.
-        return velocities
+        return normalize(velocities)
 
-    def get_neighbors(self):
-        pass
+    def generate_neighbors(self):
+        return 10 * (torch.rand(self.size, self.num_neighbors, self.dim) - 0.5)
 
 
 class VelVector(nn.Module):
@@ -54,47 +86,29 @@ class VelVector(nn.Module):
         self.num_neighbors = num_neighbors
 
         self.model = nn.Sequential(
-            nn.Linear(
-                # 1 +  # time
-                vector_dims,
-                # vector_dims * num_neighbors,  # x_i - x_0 for i \in {-n,...,n} \ {0}
-                25,
-            ),
-            nn.Linear(
-                # 1 +  # time
-                25,
-                # vector_dims * num_neighbors,  # x_i - x_0 for i \in {-n,...,n} \ {0}
-                vector_dims,
-            )
+            nn.Linear(vector_dims, 5),
+            nn.Linear(5, 1)
         )
 
-    def norm_diffs(self, batch):
-        x0, neighbors = batch[0], batch[1:]
-        diffs = neighbors - x0
-        return diffs / (diffs**2).sum(dim=-1, keepdim=True)**(1/2)
+    def norm_diffs(self, positions, neighbors):
+        diffs = neighbors - positions[:, None, :]
+        return normalize(diffs)
 
-    def forward(self, batch):
-        norm_diffs = self.norm_diffs(batch)
-        vel = (norm_diffs * self.model(norm_diffs)).sum(dim=0)
-        return vel / ((vel**2).sum(dim=-1) + 1e-10)**(1/2)
+    def forward(self, positions, neighbors):
+        norm_diffs = self.norm_diffs(positions, neighbors)
+        vel = (norm_diffs * self.model(norm_diffs)).sum(1)
+        return normalize(vel)
 
 
 def calc_loss(vel_given, vel_predicted):
-    vel_given = vel_given / torch.sqrt((vel_given**2).sum(dim=-1) + 1e-10)
-    dist = torch.sum((vel_given - vel_predicted)**2)
-    dot_product = torch.sum(vel_given * vel_predicted, dim=-1)
-    angle = torch.sum(1 / torch.sqrt(dot_product.abs() + 1e-10))
-
-    # print(f'{dist=}, {angle=}, {dot_product=}')
+    dist = ((vel_given - vel_predicted)**2).sum(-1).mean()
     loss = dist  # + angle
 
     return loss
 
 
 def get_model(dim, num_neighbors):
-    model = VelVector(dim, num_neighbors)
-
-    return model
+    return VelVector(dim, num_neighbors)
 
 
 def setup(cfg):
@@ -104,18 +118,26 @@ def setup(cfg):
     torch.backends.cudnn.deterministic = True
 
 
+def collate_fn(cfg, arg):
+    return Batch(
+        positions=arg[0][0], neighbors=arg[0][1],
+        velocities=arg[1]
+    ).to(cfg.setup.device)
+
+
 def load(cfg):
-    dataset = VectorData(cfg.dataset.dim, cfg.dataset.size)
+    dataset = VectorData(cfg.dataset.dim, cfg.dataset.num_neighbors, cfg.dataset.size)
 
-    train = torch.stack(dataset[:cfg.dataset.size_train])
-    val = torch.stack(dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test])
-    test = torch.stack(dataset[-cfg.dataset.size_test:])
+    train = dataset[:cfg.dataset.size_train]
+    val = dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
+    test = dataset[-cfg.dataset.size_test:]
 
-    train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False)
-    val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False)
-    test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False)
+    # shuffle=True flips the order of the dataset's __getitem__ result
+    train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
+    val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
+    test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
 
-    model = get_model(cfg.dataset.dim, cfg.model.num_neighbors)
+    model = get_model(cfg.dataset.dim, cfg.dataset.num_neighbors).to(cfg.setup.device)
 
     return model, (train, val, test)
 
@@ -124,11 +146,9 @@ def train(model, optimizer, data):
     model.train()
     optimizer.zero_grad()
 
-    positions, vels = data
+    output = model(data.positions, data.neighbors)
 
-    output = model(positions)
-
-    loss = calc_loss(vels[0], output)
+    loss = calc_loss(data.velocities, output)
 
     loss.backward()
     optimizer.step()
@@ -140,11 +160,9 @@ def train(model, optimizer, data):
 def val(model, data):
     model.eval()
 
-    positions, vels = data
+    output = model(data.positions, data.neighbors)
 
-    output = model(positions)
-
-    loss = calc_loss(vels[0], output)
+    loss = calc_loss(data.velocities, output)
 
     return loss
 
@@ -161,7 +179,7 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
             loss_train += train(model, optimizer, data)
 
         loss_val = 0
-        for data in dataloader_train:
+        for data in dataloader_val:
             loss_val += val(model, data)
 
         loss_train, loss_val = (

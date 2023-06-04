@@ -1,0 +1,17 @@
+setup:
+  rng_seed: 0
+  device: cpu
+load:
+  checkpoint_path: ../../../out/paytonco/chkpt.pt
+dataset:
+  dim: 2
+  num_neighbors: 10
+  size: 10_000
+  size_train: 100
+  size_val: 1_000
+  size_test: 1_000
+  batch_size_train: 100
+  batch_size_val: ${dataset.batch_size_train}
+  batch_size_test: ${dataset.batch_size_train}
+train:
+  epochs: 100
