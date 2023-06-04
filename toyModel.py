@@ -39,8 +39,11 @@ class VectorData(Dataset):
 
     def generate_velocities(self):
         velocities = self.positions.clone()
-        velocities[:, 1] = 1.
+        velocities[:, 0] = 1.
         return velocities
+
+    def get_neighbors(self):
+        pass
 
 
 class VelVector(nn.Module):
@@ -50,11 +53,19 @@ class VelVector(nn.Module):
         self.vector_dims = vector_dims
         self.num_neighbors = num_neighbors
 
-        self.model = nn.Linear(
-            # 1 +  # time
-            vector_dims,
-            # vector_dims * num_neighbors,  # x_i - x_0 for i \in {-n,...,n} \ {0}
-            vector_dims
+        self.model = nn.Sequential(
+            nn.Linear(
+                # 1 +  # time
+                vector_dims,
+                # vector_dims * num_neighbors,  # x_i - x_0 for i \in {-n,...,n} \ {0}
+                25,
+            ),
+            nn.Linear(
+                # 1 +  # time
+                25,
+                # vector_dims * num_neighbors,  # x_i - x_0 for i \in {-n,...,n} \ {0}
+                vector_dims,
+            )
         )
 
     def norm_diffs(self, batch):
@@ -64,15 +75,18 @@ class VelVector(nn.Module):
 
     def forward(self, batch):
         norm_diffs = self.norm_diffs(batch)
-        return (norm_diffs * self.model(norm_diffs)).sum(dim=0)
+        vel = (norm_diffs * self.model(norm_diffs)).sum(dim=0)
+        return vel / ((vel**2).sum(dim=-1) + 1e-10)**(1/2)
 
 
 def calc_loss(vel_given, vel_predicted):
+    vel_given = vel_given / torch.sqrt((vel_given**2).sum(dim=-1) + 1e-10)
     dist = torch.sum((vel_given - vel_predicted)**2)
     dot_product = torch.sum(vel_given * vel_predicted, dim=-1)
-    angle = torch.sum(1 / torch.sqrt(dot_product.abs() + 1e-8))
+    angle = torch.sum(1 / torch.sqrt(dot_product.abs() + 1e-10))
 
-    loss = dist + angle
+    # print(f'{dist=}, {angle=}, {dot_product=}')
+    loss = dist  # + angle
 
     return loss
 
@@ -93,13 +107,13 @@ def setup(cfg):
 def load(cfg):
     dataset = VectorData(cfg.dataset.dim, cfg.dataset.size)
 
-    train = dataset[:cfg.dataset.size_train]
-    val = dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
-    test = dataset[-cfg.dataset.size_test:]
+    train = torch.stack(dataset[:cfg.dataset.size_train])
+    val = torch.stack(dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test])
+    test = torch.stack(dataset[-cfg.dataset.size_test:])
 
-    train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=True)
-    val = DataLoader(val, batch_size=cfg.dataset.batch_size_train, shuffle=True)
-    test = DataLoader(test, batch_size=cfg.dataset.batch_size_train, shuffle=True)
+    train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False)
+    val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False)
+    test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False)
 
     model = get_model(cfg.dataset.dim, cfg.model.num_neighbors)
 
