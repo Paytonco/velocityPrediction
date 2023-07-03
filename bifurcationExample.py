@@ -9,7 +9,7 @@ def genPoint(epsilon):
     y0 = 1 + epsilon * random.uniform(0,1)
 
     x = t + x0
-    y = (y0-1) * math.exp(0.1*t^2+x0*t) + 1
+    y = (y0-1) * math.exp(0.1*t**2+x0*t) + 1
     v = (1,0.2*x*(y-1))
 
     return (np.array([t,x,y]), np.array(v))
@@ -25,4 +25,5 @@ for i in range(numPts):
 (Vx,Vy) = (vecArray[:,0],vecArray[:,1])
 plt.scatter(X,Y,c=T)
 
-plt.quiver([X,Y],Vx,Vy,T)
+plt.quiver(X,Y,Vx,Vy,T)
+plt.savefig('bifurcation.png')
