@@ -2,9 +2,10 @@ setup:
   rng_seed: 0
   device: cpu
 load:
-  checkpoint_path: ../../../out/paytonco/chkpt.pt
+  checkpoint_path: ../../out/paytonco/chkpt.pt
 dataset:
   dim: 2
+  center_pnt_idx: 0
   num_neighbors: 10
   size: 10_000
   size_train: 100

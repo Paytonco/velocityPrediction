@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import matplotlib.pyplot as plt
 
 
 def normalize(vec):
@@ -25,6 +26,13 @@ class Batch(typing.NamedTuple):
             velocities=self.velocities.to(device)
         )
 
+    def numpy(self):
+        return self.__class__(
+            self.positions.detach().numpy(),
+            self.neighbors.detach().numpy(),
+            self.velocities.detach().numpy()
+        )
+
     def __repr__(self):
         return (
             f'{self.__class__.__name__}' +
@@ -35,34 +43,26 @@ class Batch(typing.NamedTuple):
             ')'
         )
 
+    def __getitem__(self, idx):
+        return self.__class__(
+            self.positions[idx],
+            self.neighbors[idx],
+            self.velocities[idx]
+        )
+
 
 class VectorData(Dataset):
     """
-    Vector field v(t,x) = [1, x] where points (t, x) are sampled from
-    [-5, 5] x [-5, 5] uniformly at random.
     """
-    def __init__(self, dim, num_neighbors, size):
-        """
-        Parameters
-        ----------
-        dim: int
-            The spatial dimensions of the position and velocity vectors.
-
-        num_neighbors: int
-            The number of points to use for finding the velocity at a given
-            point.
-
-        size: int
-            The number of vectors to generate.
-        """
+    def __init__(self, center_pnt_idx, num_neighbors, size, epsilon):
         super().__init__()
-        self.dim = dim
+        self.center_pnt_idx = center_pnt_idx
         self.num_neighbors = num_neighbors
         self.size = size
+        self.epsilon = epsilon
 
-        self.positions = self.generate_positions()
+        self.positions, self.neighbors = self.generate_positions_and_neighbors()
         self.velocities = self.generate_velocities()
-        self.neighbors = self.generate_neighbors()
 
     def __len__(self):
         return self.size
@@ -72,23 +72,34 @@ class VectorData(Dataset):
         target = self.velocities[idx]
         return datum, target
 
-    def generate_positions(self):
-        return 10 * (torch.rand(self.size, self.dim) - 0.5)
+    def _phase_space_states(self, num_pnts):
+        x0 = self.epsilon * (2 * torch.rand(num_pnts, 2) - 1)
+        x0[:, 0] += 1
+        x = x0.clone()
+        t = 2 * np.pi * torch.rand(num_pnts)
+        x[:, 0] = x0[:, 0] * torch.cos(t) + x0[:, 1] * torch.sin(t)
+        x[:, 1] = -x0[:, 0] * torch.sin(t) + x0[:, 1] * torch.cos(t)
+
+        idx_sort_time = t.argsort()
+
+        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+
+    def generate_positions_and_neighbors(self):
+        num_pnts = self.num_neighbors + 1
+        states = self._phase_space_states(self.size * num_pnts).view(self.size, num_pnts, -1)
+        idx = torch.zeros(num_pnts, dtype=bool)
+        idx[self.center_pnt_idx] = True
+        positions = states[:, idx]
+        neighbors = states[:, ~idx]
+
+        return positions, neighbors
 
     def generate_velocities(self):
-        velocities = self.positions.clone()
-        velocities[:, 0] = 1.
-        return normalize(velocities)
-
-    def generate_neighbors(self):
-        """
-        Generate a set of neighboring points for each point from
-        :func:`generate_positions`.
-        """
-        return 10 * (torch.rand(self.size, self.num_neighbors, self.dim) - 0.5)
+        pos = self.positions
+        return torch.cat((pos[..., 2], -pos[..., 1]), dim=-1)
 
 
-class VelVector(nn.Module):
+class Model(nn.Module):
     """
     Model for predicting the unit velocity vector of a point based on a set
     of neighboring points.
@@ -100,21 +111,18 @@ class VelVector(nn.Module):
         self.num_neighbors = num_neighbors
 
         self.model = nn.Sequential(
-            nn.Linear(vector_dims, 5),
+            nn.Linear((vector_dims + 1) * num_neighbors + 1, num_neighbors),
             nn.ReLU(),
-            nn.Linear(5, 5),
+            nn.Linear(num_neighbors, num_neighbors),
             nn.ReLU(),
-            nn.Linear(5, 1),
+            nn.Linear(num_neighbors, num_neighbors),
         )
 
-    def norm_diffs(self, positions, neighbors):
-        diffs = neighbors - positions[:, None, :]
-        return normalize(diffs)
-
     def forward(self, positions, neighbors):
-        norm_diffs = self.norm_diffs(positions, neighbors)
-        vel = (norm_diffs * self.model(norm_diffs)).sum(1)
-        return normalize(vel)
+        norm_diffs = normalize(neighbors - positions)
+        arg = torch.cat((norm_diffs, positions), dim=1).flatten(1)[:, :-self.vector_dims]
+        vel = (norm_diffs * self.model(arg)[..., None]).sum(1)[:, 1:]
+        return vel
 
 
 def calc_loss(vel_given, vel_predicted):
@@ -128,7 +136,7 @@ def calc_loss(vel_given, vel_predicted):
 
 
 def get_model(dim, num_neighbors):
-    return VelVector(dim, num_neighbors)
+    return Model(dim, num_neighbors)
 
 
 def setup(cfg):
@@ -152,7 +160,7 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    dataset = VectorData(cfg.dataset.dim, cfg.dataset.num_neighbors, cfg.dataset.size)
+    dataset = VectorData(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, 0.1)
 
     train = dataset[:cfg.dataset.size_train]
     val = dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
@@ -162,6 +170,9 @@ def load(cfg):
     train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
+
+    # plot(None, None, next(iter(test))[:50])
+    # exit()
 
     model = get_model(cfg.dataset.dim, cfg.dataset.num_neighbors).to(cfg.setup.device)
 
@@ -194,7 +205,7 @@ def val(model, data):
 
 
 def run_training(cfg, model, dataloader_train, dataloader_val):
-    optimizer = torch.optim.AdamW(model.parameters())
+    optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.5)
 
     best = 1e8
     for epoch in range(cfg.train.epochs):
@@ -241,6 +252,19 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
         )
 
 
+def plot(cfg, model, data):
+    output = model(data.positions, data.neighbors).detach().numpy()
+    data = data.numpy()
+    fig, ax = plt.subplots()
+    ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              data.velocities[:, 0], data.velocities[:, 1], label='True', color='red')
+    ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              output[:, 0], output[:, 1], label='Output', color='blue')
+    ax.legend()
+    fig.savefig('output.png')
+    plt.close(fig)
+
+
 @hydra.main(version_base=None, config_path='configs', config_name='main')
 def run(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
@@ -248,6 +272,10 @@ def run(cfg):
     model, dataloaders = load(cfg)
 
     run_training(cfg, model, *dataloaders[:-1])
+
+    model.eval()
+    plot(cfg, model, next(iter(dataloaders[1]))[:10])
+
 
 
 if __name__ == '__main__':
