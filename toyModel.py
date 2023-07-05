@@ -28,9 +28,9 @@ class Batch(typing.NamedTuple):
 
     def numpy(self):
         return self.__class__(
-            self.positions.detach().numpy(),
-            self.neighbors.detach().numpy(),
-            self.velocities.detach().numpy()
+            self.positions.cpu().detach().numpy(),
+            self.neighbors.cpu().detach().numpy(),
+            self.velocities.cpu().detach().numpy()
         )
 
     def __repr__(self):
@@ -75,6 +75,7 @@ class VectorData(Dataset):
     def _phase_space_states(self, num_pnts):
         x0 = self.epsilon * (2 * torch.rand(num_pnts, 2) - 1)
         x0[:, 0] += 1
+        x0[:, 1] = 0
         x = x0.clone()
         t = 2 * np.pi * torch.rand(num_pnts)
         x[:, 0] = x0[:, 0] * torch.cos(t) + x0[:, 1] * torch.sin(t)
@@ -99,6 +100,33 @@ class VectorData(Dataset):
         return torch.cat((pos[..., 2], -pos[..., 1]), dim=-1)
 
 
+class Model2(nn.Module):
+    """
+    Model for predicting the unit velocity vector of a point based on a set
+    of neighboring points.
+    """
+    def __init__(self, vector_dims, num_neighbors):
+        super().__init__()
+
+        self.vector_dims = vector_dims
+        self.num_neighbors = num_neighbors
+
+        self.model = nn.Sequential(
+            nn.Linear(2, 20),
+            nn.ReLU(),
+            nn.Linear(20, 20),
+            nn.ReLU(),
+            nn.Linear(20, 1),
+        )
+
+    def forward(self, positions, neighbors):
+        norm_diffs = neighbors - positions
+        dist = (norm_diffs[..., 1:]**2).sum(-1)
+        arg = torch.dstack((norm_diffs[..., 0], dist))
+        vel = (norm_diffs[..., 1:] * self.model(arg)).sum(1)
+        return vel
+
+
 class Model(nn.Module):
     """
     Model for predicting the unit velocity vector of a point based on a set
@@ -111,11 +139,11 @@ class Model(nn.Module):
         self.num_neighbors = num_neighbors
 
         self.model = nn.Sequential(
-            nn.Linear((vector_dims + 1) * num_neighbors + 1, num_neighbors),
+            nn.Linear((vector_dims + 1) * num_neighbors + 1, num_neighbors * 2),
             nn.ReLU(),
-            nn.Linear(num_neighbors, num_neighbors),
+            nn.Linear(num_neighbors * 2, num_neighbors * 2),
             nn.ReLU(),
-            nn.Linear(num_neighbors, num_neighbors),
+            nn.Linear(num_neighbors * 2, num_neighbors),
         )
 
     def forward(self, positions, neighbors):
@@ -130,13 +158,14 @@ def calc_loss(vel_given, vel_predicted):
     Mean of the square distance between the velocity vectors.
     """
     dist = ((vel_given - vel_predicted)**2).sum(-1).mean()
-    loss = dist  # + angle
+    dot = -(vel_given * vel_predicted).sum(-1).mean()
+    loss = dist
 
     return loss
 
 
 def get_model(dim, num_neighbors):
-    return Model(dim, num_neighbors)
+    return Model2(dim, num_neighbors)
 
 
 def setup(cfg):
@@ -160,19 +189,18 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    dataset = VectorData(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, 0.1)
+    dataset = VectorData(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
 
-    train = dataset[:cfg.dataset.size_train]
-    val = dataset[-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
-    test = dataset[-cfg.dataset.size_test:]
+    idx = torch.bernoulli(.5 * torch.ones(len(dataset))).to(bool)
+
+    train = dataset[idx]  # [:cfg.dataset.size_train]
+    val = dataset[~idx]  # [-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
+    test = None  # dataset[-cfg.dataset.size_test:]
 
     # FIXME: setting shuffle=True flips the order of the dataset's __getitem__ result
     train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
-    test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
-
-    # plot(None, None, next(iter(test))[:50])
-    # exit()
+    test = None  # DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
 
     model = get_model(cfg.dataset.dim, cfg.dataset.num_neighbors).to(cfg.setup.device)
 
@@ -205,7 +233,7 @@ def val(model, data):
 
 
 def run_training(cfg, model, dataloader_train, dataloader_val):
-    optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.5)
+    optimizer = torch.optim.AdamW(model.parameters())
 
     best = 1e8
     for epoch in range(cfg.train.epochs):
@@ -252,16 +280,18 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
         )
 
 
-def plot(cfg, model, data):
-    output = model(data.positions, data.neighbors).detach().numpy()
+def plot(path, model, data):
+    output = model(data.positions, data.neighbors).cpu().detach().numpy()
     data = data.numpy()
     fig, ax = plt.subplots()
+    ax.scatter(data.neighbors[:, :, 1], data.neighbors[:, :, 2],
+              label='Neighbors', color='green')
     ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
               data.velocities[:, 0], data.velocities[:, 1], label='True', color='red')
     ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
               output[:, 0], output[:, 1], label='Output', color='blue')
     ax.legend()
-    fig.savefig('output.png')
+    fig.savefig(f'{path}.pdf', format='pdf')
     plt.close(fig)
 
 
@@ -274,7 +304,8 @@ def run(cfg):
     run_training(cfg, model, *dataloaders[:-1])
 
     model.eval()
-    plot(cfg, model, next(iter(dataloaders[1]))[:10])
+    plot('output_train', model, next(iter(dataloaders[0]))[:100])
+    plot('output_val', model, next(iter(dataloaders[1]))[:100])
 
 
 
