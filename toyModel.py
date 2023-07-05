@@ -97,7 +97,7 @@ class VectorData(Dataset):
 
     def generate_velocities(self):
         pos = self.positions
-        return torch.cat((pos[..., 2], -pos[..., 1]), dim=-1)
+        return normalize(torch.cat((pos[..., 2], -pos[..., 1]), dim=-1))
 
 
 class Model2(nn.Module):
@@ -123,7 +123,7 @@ class Model2(nn.Module):
         norm_diffs = neighbors - positions
         dist = (norm_diffs[..., 1:]**2).sum(-1)
         arg = torch.dstack((norm_diffs[..., 0], dist))
-        vel = (norm_diffs[..., 1:] * self.model(arg)).sum(1)
+        vel = (normalize(norm_diffs[..., 1:]) * self.model(arg)).sum(1)
         return vel
 
 
