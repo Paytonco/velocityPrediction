@@ -51,7 +51,107 @@ class Batch(typing.NamedTuple):
         )
 
 
-class VectorData(Dataset):
+class DataSimple(Dataset):
+    def __init__(self, center_pnt_idx, num_neighbors, size, epsilon):
+        super().__init__()
+        self.center_pnt_idx = center_pnt_idx
+        self.num_neighbors = num_neighbors
+        self.size = size
+        self.epsilon = epsilon
+
+        self.positions, self.neighbors = self.generate_positions_and_neighbors()
+        self.velocities = self.generate_velocities()
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, idx):
+        datum = self.positions[idx], self.neighbors[idx]
+        target = self.velocities[idx]
+        return datum, target
+
+    def _phase_space_states(self, num_pnts):
+        x0 = torch.zeros(num_pnts, 2)
+        branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
+        x0[:, 1] = 3 + self.epsilon * (.5 * torch.rand(num_pnts) + .5) # * branch
+        x = x0.clone()
+        t = 3 * torch.rand(num_pnts)
+        x[:, 0] = t
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
+
+        idx_sort_time = t.argsort()
+
+        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+
+    def generate_positions_and_neighbors(self):
+        num_pnts = self.num_neighbors + 1
+        states = self._phase_space_states(self.size * num_pnts).view(self.size, num_pnts, -1)
+        idx = torch.zeros(num_pnts, dtype=bool)
+        idx[self.center_pnt_idx] = True
+        positions = states[:, idx]
+        neighbors = states[:, ~idx]
+
+        return positions, neighbors
+
+    def generate_velocities(self):
+        pos = self.positions
+        return torch.cat((
+            torch.ones(pos.size(0), 1),
+            .2 * pos[..., 1] * (pos[..., 2] - 1)
+        ), dim=-1)
+
+
+class DataBifurcation(Dataset):
+    def __init__(self, center_pnt_idx, num_neighbors, size, epsilon):
+        super().__init__()
+        self.center_pnt_idx = center_pnt_idx
+        self.num_neighbors = num_neighbors
+        self.size = size
+        self.epsilon = epsilon
+
+        self.positions, self.neighbors = self.generate_positions_and_neighbors()
+        self.velocities = self.generate_velocities()
+
+    def __len__(self):
+        return self.size
+
+    def __getitem__(self, idx):
+        datum = self.positions[idx], self.neighbors[idx]
+        target = self.velocities[idx]
+        return datum, target
+
+    def _phase_space_states(self, num_pnts):
+        x0 = torch.zeros(num_pnts, 2)
+        branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
+        x0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(num_pnts) + .5) * branch
+        x = x0.clone()
+        t = 6 * torch.rand(num_pnts)
+        x[:, 0] = t
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
+
+        idx_sort_time = t.argsort()
+
+        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+
+    def generate_positions_and_neighbors(self):
+        num_pnts = self.num_neighbors + 1
+        states = self._phase_space_states(self.size * num_pnts).view(self.size, num_pnts, -1)
+        idx = torch.zeros(num_pnts, dtype=bool)
+        idx[self.center_pnt_idx] = True
+        positions = states[:, idx]
+        neighbors = states[:, ~idx]
+
+        return positions, neighbors
+
+    def generate_velocities(self):
+        pos = self.positions
+        return torch.cat((
+            torch.ones(pos.size(0), 1),
+            .2 * pos[..., 1] * (pos[..., 2] - 1)
+        ), dim=-1)
+
+
+class DataOscillation(Dataset):
     """
     """
     def __init__(self, center_pnt_idx, num_neighbors, size, epsilon):
@@ -97,7 +197,7 @@ class VectorData(Dataset):
 
     def generate_velocities(self):
         pos = self.positions
-        return normalize(torch.cat((pos[..., 2], -pos[..., 1]), dim=-1))
+        return torch.cat((pos[..., 2], -pos[..., 1]), dim=-1)
 
 
 class Model2(nn.Module):
@@ -189,7 +289,7 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    dataset = VectorData(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
+    dataset = DataSimple(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
 
     idx = torch.bernoulli(.5 * torch.ones(len(dataset))).to(bool)
 

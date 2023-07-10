@@ -8,11 +8,11 @@ dataset:
   center_pnt_idx: 0
   num_neighbors: 10
   epsilon: 0.1
-  size: 10_000
+  size: 100
   size_train: 100
   size_val: 1_000
   size_test: 1_000
-  batch_size_train: 100
+  batch_size_train: 10
   batch_size_val: ${dataset.batch_size_train}
   batch_size_test: ${dataset.batch_size_train}
 train:
