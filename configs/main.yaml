@@ -11,9 +11,9 @@ dataset:
   num_neighbors: 10
   epsilon: 0.1
   size: 100
-  size_train: 100
-  size_val: 1_000
-  size_test: 1_000
+  size_train: 80
+  size_val: 10
+  size_test: 10
   batch_size_train: 2
   batch_size_val: ${dataset.batch_size_train}
   batch_size_test: ${dataset.batch_size_train}

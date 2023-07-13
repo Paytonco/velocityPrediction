@@ -270,6 +270,19 @@ def get_model(dim):
     return Model2(dim)
 
 
+def get_dataset(name, centr_pnt_idx, num_neighbors, size, epsilon):
+    if name == 'simple':
+        ds = DataSimple
+    elif name == 'bifurcation':
+        ds = DataBifurcation
+    elif name == 'oscillation':
+        ds = DataOscillation
+    else:
+        raise ValueError(f'Invalid dataset name in config: {name}')
+
+    return ds(num_neighbors // 2, num_neighbors, size, epsilon)
+
+
 def setup(cfg):
     """
     Set some global settings.
@@ -299,27 +312,18 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    if cfg.dataset.name == 'simple':
-        ds = DataSimple
-    elif cfg.dataset.name == 'bifurcation':
-        ds = DataBifurcation
-    elif cfg.dataset.name == 'oscillation':
-        ds = DataOscillation
-    else:
-        raise ValueError(f'Invalid dataset name in config: {cfg.dataset.name}')
+    dataset = get_dataset(cfg.dataset.name, cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
+    idx = torch.randperm(len(dataset))
+    train = dataset[idx[:cfg.dataset.size_train]]
+    val = dataset[idx[-(cfg.dataset.size_val+cfg.dataset.size_test):-cfg.dataset.size_test]]
+    test = dataset[idx[-cfg.dataset.size_test:]]
 
-    dataset = ds(cfg.dataset.num_neighbors // 2, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
-
-    idx = torch.bernoulli(.5 * torch.ones(len(dataset))).to(bool)
-
-    train = dataset[idx]  # [:cfg.dataset.size_train]
-    val = dataset[~idx]  # [-(cfg.dataset.size_val+cfg.dataset.size_test):len(dataset)-cfg.dataset.size_test]
-    test = None  # dataset[-cfg.dataset.size_test:]
+    breakpoint()
 
     # FIXME: setting shuffle=True flips the order of the dataset's __getitem__ result
     train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
-    test = None  # DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
+    test = DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
 
     model = get_model(cfg.dataset.dim).to(cfg.setup.device)
 
