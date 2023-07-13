@@ -1,7 +1,9 @@
 import time
 import typing
+from pathlib import Path
 
 import hydra
+import omegaconf
 from omegaconf import OmegaConf
 import numpy as np
 import torch
@@ -72,12 +74,12 @@ class DataSimple(Dataset):
 
     def _phase_space_states(self, num_pnts):
         x0 = torch.zeros(num_pnts, 2)
-        branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
-        x0[:, 1] = 3 + self.epsilon * (.5 * torch.rand(num_pnts) + .5) # * branch
+        x0[:, 1] = self.epsilon * torch.rand(num_pnts)
         x = x0.clone()
-        t = 3 * torch.rand(num_pnts)
-        x[:, 0] = t
-        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
+        t = torch.rand(num_pnts)
+        t_scaled = 3 * t
+        x[:, 0] = t_scaled
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
 
         idx_sort_time = t.argsort()
 
@@ -96,7 +98,7 @@ class DataSimple(Dataset):
     def generate_velocities(self):
         pos = self.positions
         return torch.cat((
-            torch.ones(pos.size(0), 1),
+            torch.ones(pos.size(0), 3),
             .2 * pos[..., 1] * (pos[..., 2] - 1)
         ), dim=-1)
 
@@ -125,9 +127,10 @@ class DataBifurcation(Dataset):
         branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
         x0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(num_pnts) + .5) * branch
         x = x0.clone()
-        t = 6 * torch.rand(num_pnts)
-        x[:, 0] = t
-        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
+        t = torch.rand(num_pnts)
+        t_scaled = 6 * t
+        x[:, 0] = t_scaled
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
 
         idx_sort_time = t.argsort()
 
@@ -146,7 +149,7 @@ class DataBifurcation(Dataset):
     def generate_velocities(self):
         pos = self.positions
         return torch.cat((
-            torch.ones(pos.size(0), 1),
+            torch.ones(pos.size(0), 6),
             .2 * pos[..., 1] * (pos[..., 2] - 1)
         ), dim=-1)
 
@@ -173,13 +176,13 @@ class DataOscillation(Dataset):
         return datum, target
 
     def _phase_space_states(self, num_pnts):
-        x0 = self.epsilon * (2 * torch.rand(num_pnts, 2) - 1)
-        x0[:, 0] += 1
-        x0[:, 1] = 0
+        x0 = torch.zeros(num_pnts, 2)
+        x0[:, 0] = 1 + self.epsilon * (2 * torch.rand(num_pnts) - 1)
         x = x0.clone()
-        t = 2 * np.pi * torch.rand(num_pnts)
-        x[:, 0] = x0[:, 0] * torch.cos(t) + x0[:, 1] * torch.sin(t)
-        x[:, 1] = -x0[:, 0] * torch.sin(t) + x0[:, 1] * torch.cos(t)
+        t = torch.rand(num_pnts)
+        t_scaled = 2 * np.pi * t
+        x[:, 0] = x0[:, 0] * torch.cos(t_scaled) + x0[:, 1] * torch.sin(t_scaled)
+        x[:, 1] = -x0[:, 0] * torch.sin(t_scaled) + x0[:, 1] * torch.cos(t_scaled)
 
         idx_sort_time = t.argsort()
 
@@ -205,11 +208,10 @@ class Model2(nn.Module):
     Model for predicting the unit velocity vector of a point based on a set
     of neighboring points.
     """
-    def __init__(self, vector_dims, num_neighbors):
+    def __init__(self, vector_dims):
         super().__init__()
 
         self.vector_dims = vector_dims
-        self.num_neighbors = num_neighbors
 
         self.model = nn.Sequential(
             nn.Linear(2, 20),
@@ -264,18 +266,26 @@ def calc_loss(vel_given, vel_predicted):
     return loss
 
 
-def get_model(dim, num_neighbors):
-    return Model2(dim, num_neighbors)
+def get_model(dim):
+    return Model2(dim)
 
 
 def setup(cfg):
     """
     Set some global settings.
     """
-    # Reproduciblity
-    np.random.seed(cfg.setup.rng_seed)
-    torch.manual_seed(cfg.setup.rng_seed)
-    torch.backends.cudnn.deterministic = True
+    with omegaconf.open_dict(cfg):
+        cfg.load.checkpoint_path = Path(cfg.load.checkpoint_path)
+
+    if cfg.setup.deterministic:
+        # Reproduciblity
+        np.random.seed(cfg.setup.rng_seed)
+        torch.manual_seed(cfg.setup.rng_seed)
+        torch.backends.cudnn.deterministic = True
+    else:
+        with omegaconf.open_dict(cfg):
+            p = cfg.load.checkpoint_path
+            cfg.load.checkpoint_path = p.parent / f'{p.stem}_{np.random.randint(10_000)}{p.suffix}'
 
 
 def collate_fn(cfg, arg):
@@ -289,7 +299,16 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    dataset = DataSimple(cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
+    if cfg.dataset.name == 'simple':
+        ds = DataSimple
+    elif cfg.dataset.name == 'bifurcation':
+        ds = DataBifurcation
+    elif cfg.dataset.name == 'oscillation':
+        ds = DataOscillation
+    else:
+        raise ValueError(f'Invalid dataset name in config: {cfg.dataset.name}')
+
+    dataset = ds(cfg.dataset.num_neighbors // 2, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
 
     idx = torch.bernoulli(.5 * torch.ones(len(dataset))).to(bool)
 
@@ -302,7 +321,7 @@ def load(cfg):
     val = DataLoader(val, batch_size=cfg.dataset.batch_size_val, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
     test = None  # DataLoader(test, batch_size=cfg.dataset.batch_size_test, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
 
-    model = get_model(cfg.dataset.dim, cfg.dataset.num_neighbors).to(cfg.setup.device)
+    model = get_model(cfg.dataset.dim).to(cfg.setup.device)
 
     return model, (train, val, test)
 
@@ -361,7 +380,8 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
                 epoch=epoch,
                 model_state_dict=model.state_dict(),
                 optimizer_state_dict=optimizer.state_dict(),
-                loss_val=loss_val
+                loss_val=loss_val,
+                cfg=cfg
             ), cfg.load.checkpoint_path)
 
         epoch_stats = dict(
@@ -399,6 +419,7 @@ def plot(path, model, data):
 def run(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
     setup(cfg)
+
     model, dataloaders = load(cfg)
 
     run_training(cfg, model, *dataloaders[:-1])

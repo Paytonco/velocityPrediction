@@ -1,9 +1,11 @@
 setup:
   rng_seed: 0
   device: cpu
+  deterministic: true
 load:
-  checkpoint_path: ../../out/paytonco/chkpt.pt
+  checkpoint_path: ../../out/paytonco/cp_ds_${dataset.name}_nn_${dataset.num_neighbors}_sz_${dataset.size}_eps_${dataset.epsilon}.pt
 dataset:
+  name: simple
   dim: 2
   center_pnt_idx: 0
   num_neighbors: 10
@@ -12,7 +14,7 @@ dataset:
   size_train: 100
   size_val: 1_000
   size_test: 1_000
-  batch_size_train: 10
+  batch_size_train: 2
   batch_size_val: ${dataset.batch_size_train}
   batch_size_test: ${dataset.batch_size_train}
 train:
