@@ -3,4 +3,5 @@ hydra:
     chdir: false
   run:
     dir: test  #${setup.save_dir}
+plot: num_neighbors
 model_paths: []

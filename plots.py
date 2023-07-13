@@ -20,9 +20,14 @@ IMG_FMT = 'pdf'
 SAVEFIG_SETTINGS = dict(format=IMG_FMT, bbox_inches='tight')
 
 
-def get_num_neighbors(path):
-    return int(path.partition('nn_')[2].partition('_')[0])
+def get_param_from_path(tag, path):
+    return int(path.partition(f'{tag}_')[2].partition('_')[0])
 
+def get_num_neighbors(path):
+    return get_param_from_path('nn', path)
+
+def get_size(path):
+    return get_param_from_path('sz', path)
 
 def scatter_mean_stddev(src, index):
     mean = scatter(src, index, reduce='mean')
@@ -66,11 +71,10 @@ def scatter_idx(a):
     return res
 
 
-def loss_by_num_neighbors(cfg, path_models):
+def loss_by_param(ax, cfg, xs, path_models):
     paths, models, datasets = zip(*path_models)
     train, val = zip(*datasets)
 
-    neighbors = torch.tensor(list(map(get_num_neighbors, paths)))
     losses = []
     for m, d in zip(models, val):
         output = m(d.positions, d.neighbors)
@@ -78,20 +82,16 @@ def loss_by_num_neighbors(cfg, path_models):
         losses.append(loss)
     losses = torch.tensor(losses)
 
-    idx = scatter_idx(neighbors // 2)
+    idx = scatter_idx(xs)
     mean, stddev, n = scatter_mean_stddev(losses, idx)
 
-    fig, ax = plt.subplots()
-    # plot_confidence_interval(ax, scatter(neighbors // 2, idx, reduce='max'), mean, stddev, n)
     z_star = 1.96
-    xs = torch.unique_consecutive(neighbors // 2)
+    x_axis = torch.unique_consecutive(xs)
     ax.set_title('Validation Loss')
-    ax.errorbar(xs, mean, z_star * stddev / n.sqrt(), fmt='o', linewidth=2, capsize=6)
+    ax.errorbar(x_axis, mean, z_star * stddev / n.sqrt(), fmt='o', linewidth=2, capsize=6)
     ax.set_xlabel('$n$')
-    ax.set_xticks(xs)
+    ax.set_xticks(x_axis)
     ax.set_ylabel('MSE')
-    fig.savefig(f'loss_by_num_neighbors.{IMG_FMT}', **SAVEFIG_SETTINGS)
-    plt.close(fig)
 
 
 @hydra.main(version_base=None, config_path='configs', config_name='plots')
@@ -115,7 +115,17 @@ def run(cfg):
         model.load_state_dict(model_checkpoint['model_state_dict'])
         models.append((path, model, datasets))
 
-    loss_by_num_neighbors(cfg, models)
+    if cfg.plot == 'num_neighbors':
+        xs = torch.tensor(list(map(get_num_neighbors, (p[0] for p in models)))) // 2
+    elif cfg.plot == 'size':
+        xs = torch.tensor(list(map(get_size, (p[0] for p in models))))
+    else:
+        raise ValueError(f'Invalid plot param: {cfg.plot}')
+
+    fig, ax = plt.subplots()
+    loss_by_param(ax, cfg, xs, models)
+    fig.savefig(f'loss_by_{cfg.plot}.{IMG_FMT}', **SAVEFIG_SETTINGS)
+    plt.close(fig)
 
 
 if __name__ == '__main__':
