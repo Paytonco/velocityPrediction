@@ -19,3 +19,5 @@ dataset:
   batch_size_test: ${dataset.batch_size_train}
 train:
   epochs: 100
+  print_stats: true
+  repeats: 0

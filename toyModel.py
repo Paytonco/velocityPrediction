@@ -1,3 +1,4 @@
+import itertools
 import time
 import typing
 from pathlib import Path
@@ -407,13 +408,14 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
             time=t_end-t_start
         )
 
-        print(
-            'Epoch: {epoch:03d}, '
-            'loss_train: {loss_train:.7f}, '
-            'loss_val: {loss_val:.7f}, '
-            'time: {time:3.3f}, '
-            ''.format(**epoch_stats)
-        )
+        if cfg.train.print_stats:
+            print(
+                'Epoch: {epoch:03d}, '
+                'loss_train: {loss_train:.7f}, '
+                'loss_val: {loss_val:.7f}, '
+                'time: {time:3.3f}, '
+                ''.format(**epoch_stats)
+            )
 
 
 def plot(path, model, data):
@@ -434,11 +436,23 @@ def plot(path, model, data):
 @hydra.main(version_base=None, config_path='configs', config_name='main')
 def run(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
-    setup(cfg)
+    params = (cfg.dataset.size, cfg.dataset.num_neighbors, cfg.dataset.epsilon)
+    if all(map(np.isscalar, params)):
+        param_sets = [params]
+    else:
+        param_sets = list(itertools.product(*map(np.atleast_1d, params)))
 
-    model, dataloaders = load(cfg)
+    for rep in range(cfg.train.repeats + 1):
+        for i, (size, num_neighbors, epsilon) in enumerate(param_sets):
+            print(f'Run {rep + 1} of {cfg.train.repeats + 1}: Param Set {i + 1} of {len(param_sets)}')
+            with omegaconf.open_dict(cfg):
+                cfg.dataset.size, cfg.dataset.num_neighbors, cfg.dataset.epsilon = int(size), int(num_neighbors), float(epsilon)
+                cfg.load.checkpoint_path = Path(f'../../out/paytonco/cp_ds_{cfg.dataset.name}_nn_{cfg.dataset.num_neighbors}_sz_{cfg.dataset.size}_eps_{cfg.dataset.epsilon}.pt')
+            setup(cfg)
 
-    run_training(cfg, model, *dataloaders[:-1])
+            model, dataloaders = load(cfg)
+
+            run_training(cfg, model, *dataloaders[:-1])
 
     model.eval()
     plot('output_train', model, next(iter(dataloaders[0]))[:100])

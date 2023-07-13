@@ -81,7 +81,6 @@ def loss_by_num_neighbors(cfg, path_models):
     idx = scatter_idx(neighbors // 2)
     mean, stddev, n = scatter_mean_stddev(losses, idx)
 
-
     fig, ax = plt.subplots()
     # plot_confidence_interval(ax, scatter(neighbors // 2, idx, reduce='max'), mean, stddev, n)
     z_star = 1.96
