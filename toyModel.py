@@ -12,6 +12,11 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
 
+# set in setup
+np_rng = None
+torch_rng = None
+
+
 def normalize(vec):
     return nn.functional.normalize(vec, dim=-1)
 
@@ -74,9 +79,9 @@ class DataSimple(Dataset):
 
     def _phase_space_states(self, num_pnts):
         x0 = torch.zeros(num_pnts, 2)
-        x0[:, 1] = self.epsilon * torch.rand(num_pnts)
+        x0[:, 1] = self.epsilon * torch.rand(num_pnts, generator=torch_rng)
         x = x0.clone()
-        t = torch.rand(num_pnts)
+        t = torch.rand(num_pnts, generator=torch_rng)
         t_scaled = 3 * t
         x[:, 0] = t_scaled
         x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
@@ -125,9 +130,9 @@ class DataBifurcation(Dataset):
     def _phase_space_states(self, num_pnts):
         x0 = torch.zeros(num_pnts, 2)
         branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
-        x0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(num_pnts) + .5) * branch
+        x0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(num_pnts, generator=torch_rng) + .5) * branch
         x = x0.clone()
-        t = torch.rand(num_pnts)
+        t = torch.rand(num_pnts, generator=torch_rng)
         t_scaled = 6 * t
         x[:, 0] = t_scaled
         x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
@@ -177,9 +182,9 @@ class DataOscillation(Dataset):
 
     def _phase_space_states(self, num_pnts):
         x0 = torch.zeros(num_pnts, 2)
-        x0[:, 0] = 1 + self.epsilon * (2 * torch.rand(num_pnts) - 1)
+        x0[:, 0] = 1 + self.epsilon * (2 * torch.rand(num_pnts, generator=torch_rng) - 1)
         x = x0.clone()
-        t = torch.rand(num_pnts)
+        t = torch.rand(num_pnts, generator=torch_rng)
         t_scaled = 2 * np.pi * t
         x[:, 0] = x0[:, 0] * torch.cos(t_scaled) + x0[:, 1] * torch.sin(t_scaled)
         x[:, 1] = -x0[:, 0] * torch.sin(t_scaled) + x0[:, 1] * torch.cos(t_scaled)
@@ -290,10 +295,13 @@ def setup(cfg):
     with omegaconf.open_dict(cfg):
         cfg.load.checkpoint_path = Path(cfg.load.checkpoint_path)
 
+    # Reproduciblity
+    global np_rng
+    global torch_rng
+    np_rng = np.random.default_rng(cfg.setup.rng_seed)
+    torch_rng = torch.Generator()
+    torch_rng.manual_seed(cfg.setup.rng_seed)
     if cfg.setup.deterministic:
-        # Reproduciblity
-        np.random.seed(cfg.setup.rng_seed)
-        torch.manual_seed(cfg.setup.rng_seed)
         torch.backends.cudnn.deterministic = True
     else:
         with omegaconf.open_dict(cfg):
@@ -313,7 +321,7 @@ def load(cfg):
     Create the dataloaders, and construct the model.
     """
     dataset = get_dataset(cfg.dataset.name, cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
-    idx = torch.randperm(len(dataset))
+    idx = torch.randperm(len(dataset), generator=torch_rng)
     train = dataset[idx[:cfg.dataset.size_train]]
     val = dataset[idx[-(cfg.dataset.size_val+cfg.dataset.size_test):-cfg.dataset.size_test]]
     test = dataset[idx[-cfg.dataset.size_test:]]
