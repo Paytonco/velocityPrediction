@@ -1,6 +1,7 @@
 import copy
 
 import hydra
+import omegaconf
 from omegaconf import OmegaConf
 import numpy as np
 import torch
@@ -58,33 +59,40 @@ def plot_confidence_interval(ax, x, mean, stddev, n, z=1.96, color='#2187bb', ho
     ax.plot(x, mean, 'o', color='#f44336')
 
 
-def loss_by_num_neighbors(cfg, path_models, datasets):
-    train, val = datasets
-    ds = next(iter(train))
+def scatter_idx(a):
+    res = a.clone()
+    for i, v in enumerate(torch.unique(a)):
+        res[res == v] = i
+    return res
 
-    paths, models = zip(*path_models)
+
+def loss_by_num_neighbors(cfg, path_models):
+    paths, models, datasets = zip(*path_models)
+    train, val = zip(*datasets)
+
     neighbors = torch.tensor(list(map(get_num_neighbors, paths)))
-    losses = torch.tensor([toyModel
-              .calc_loss(ds.velocities, m(ds.positions, ds.neighbors))
-              for m in models])
+    losses = []
+    for m, d in zip(models, val):
+        output = m(d.positions, d.neighbors)
+        loss = toyModel.calc_loss(d.velocities, output)
+        losses.append(loss)
+    losses = torch.tensor(losses)
 
-    # use neighbors / 2 - 1 to set up scatter groups
-    scatter_index = neighbors // 2 - 1
-    mean, stddev, n = scatter_mean_stddev(losses, scatter_index)
+    idx = scatter_idx(neighbors // 2)
+    mean, stddev, n = scatter_mean_stddev(losses, idx)
 
 
     fig, ax = plt.subplots()
-    # plot_confidence_interval(ax, scatter(neighbors // 2, scatter_index, reduce='max'), mean, stddev, n)
+    # plot_confidence_interval(ax, scatter(neighbors // 2, idx, reduce='max'), mean, stddev, n)
     z_star = 1.96
     xs = torch.unique_consecutive(neighbors // 2)
-    ax.set_title('Loss per $n$')
+    ax.set_title('Validation Loss')
     ax.errorbar(xs, mean, z_star * stddev / n.sqrt(), fmt='o', linewidth=2, capsize=6)
     ax.set_xlabel('$n$')
     ax.set_xticks(xs)
     ax.set_ylabel('MSE')
     fig.savefig(f'loss_by_num_neighbors.{IMG_FMT}', **SAVEFIG_SETTINGS)
     plt.close(fig)
-
 
 
 @hydra.main(version_base=None, config_path='configs', config_name='plots')
@@ -99,14 +107,16 @@ def run(cfg):
     models = []
     for path in sorted(cfg.model_paths):
         model_checkpoint = torch.load(path)
-        model, datasets = toyModel.load(model_checkpoint['cfg'])
-        datasets = datasets[:2]
+        model_cfg = model_checkpoint['cfg']
+        toyModel.setup(model_cfg)
+        model = toyModel.get_model(model_cfg.dataset.dim).to(model_cfg.setup.device)
+        datasets = toyModel.get_dataset(model_cfg)[:2]
+        datasets = map(lambda a: toyModel.collate_fn(model_cfg, a), datasets)
         model.eval()
-        m = model
-        m.load_state_dict(model_checkpoint['model_state_dict'])
-        models.append((path, m))
+        model.load_state_dict(model_checkpoint['model_state_dict'])
+        models.append((path, model, datasets))
 
-    loss_by_num_neighbors(cfg, models, datasets)
+    loss_by_num_neighbors(cfg, models)
 
 
 if __name__ == '__main__':

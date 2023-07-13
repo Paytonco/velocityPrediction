@@ -275,17 +275,27 @@ def get_model(dim):
     return Model2(dim)
 
 
-def get_dataset(name, centr_pnt_idx, num_neighbors, size, epsilon):
-    if name == 'simple':
+def get_dataset(cfg):
+    if cfg.dataset.name == 'simple':
         ds = DataSimple
-    elif name == 'bifurcation':
+    elif cfg.dataset.name == 'bifurcation':
         ds = DataBifurcation
-    elif name == 'oscillation':
+    elif cfg.dataset.name == 'oscillation':
         ds = DataOscillation
     else:
-        raise ValueError(f'Invalid dataset name in config: {name}')
+        raise ValueError(f'Invalid dataset name in config: {cfg.dataset.name}')
 
-    return ds(num_neighbors // 2, num_neighbors, size, epsilon)
+    dataset = ds(cfg.dataset.num_neighbors // 2, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
+    size = len(dataset)
+    idx = torch.randperm(size, generator=torch_rng)
+    size_train = int(cfg.dataset.size_train * size)
+    size_val = int(cfg.dataset.size_val * size)
+    size_test = int(cfg.dataset.size_test * size)
+    train = dataset[idx[:size_train]]
+    val = dataset[idx[-(size_val+size_test):-size_test]]
+    test = dataset[idx[-size_test:]]
+
+    return train, val, test
 
 
 def setup(cfg):
@@ -320,13 +330,7 @@ def load(cfg):
     """
     Create the dataloaders, and construct the model.
     """
-    dataset = get_dataset(cfg.dataset.name, cfg.dataset.center_pnt_idx, cfg.dataset.num_neighbors, cfg.dataset.size, cfg.dataset.epsilon)
-    idx = torch.randperm(len(dataset), generator=torch_rng)
-    train = dataset[idx[:cfg.dataset.size_train]]
-    val = dataset[idx[-(cfg.dataset.size_val+cfg.dataset.size_test):-cfg.dataset.size_test]]
-    test = dataset[idx[-cfg.dataset.size_test:]]
-
-    breakpoint()
+    train, val, test = get_dataset(cfg)
 
     # FIXME: setting shuffle=True flips the order of the dataset's __getitem__ result
     train = DataLoader(train, batch_size=cfg.dataset.batch_size_train, shuffle=False, collate_fn=lambda arg: collate_fn(cfg, arg))
