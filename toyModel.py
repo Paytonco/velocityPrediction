@@ -82,14 +82,13 @@ class DataSimple(Dataset):
         x0 = torch.zeros(num_pnts, 2)
         x0[:, 1] = self.epsilon * torch.rand(num_pnts, generator=torch_rng)
         x = x0.clone()
-        t = torch.rand(num_pnts, generator=torch_rng)
-        t_scaled = 3 * t
-        x[:, 0] = t_scaled
-        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
+        t = 3 * torch.rand(num_pnts, generator=torch_rng)
+        x[:, 0] = t
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
 
         idx_sort_time = t.argsort()
 
-        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+        return torch.cat((t[:, None] / 3, x), dim=-1)[idx_sort_time]
 
     def generate_positions_and_neighbors(self):
         num_pnts = self.num_neighbors + 1
@@ -104,7 +103,7 @@ class DataSimple(Dataset):
     def generate_velocities(self):
         pos = self.positions
         return torch.cat((
-            torch.ones(pos.size(0), 3),
+            torch.ones(pos.size(0), 1),
             .2 * pos[..., 1] * (pos[..., 2] - 1)
         ), dim=-1)
 
@@ -133,14 +132,13 @@ class DataBifurcation(Dataset):
         branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
         x0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(num_pnts, generator=torch_rng) + .5) * branch
         x = x0.clone()
-        t = torch.rand(num_pnts, generator=torch_rng)
-        t_scaled = 6 * t
-        x[:, 0] = t_scaled
-        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t_scaled**2 + x0[:, 0] * t_scaled) + 1
+        t = 6 * torch.rand(num_pnts, generator=torch_rng)
+        x[:, 0] = t
+        x[:, 1] = (x0[:, 1] - 1) * torch.exp(.1 * t**2 + x0[:, 0] * t) + 1
 
         idx_sort_time = t.argsort()
 
-        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+        return torch.cat((t[:, None] / 6, x), dim=-1)[idx_sort_time]
 
     def generate_positions_and_neighbors(self):
         num_pnts = self.num_neighbors + 1
@@ -155,7 +153,7 @@ class DataBifurcation(Dataset):
     def generate_velocities(self):
         pos = self.positions
         return torch.cat((
-            torch.ones(pos.size(0), 6),
+            torch.ones(pos.size(0), 1),
             .2 * pos[..., 1] * (pos[..., 2] - 1)
         ), dim=-1)
 
@@ -185,14 +183,13 @@ class DataOscillation(Dataset):
         x0 = torch.zeros(num_pnts, 2)
         x0[:, 0] = 1 + self.epsilon * (2 * torch.rand(num_pnts, generator=torch_rng) - 1)
         x = x0.clone()
-        t = torch.rand(num_pnts, generator=torch_rng)
-        t_scaled = 2 * np.pi * t
-        x[:, 0] = x0[:, 0] * torch.cos(t_scaled) + x0[:, 1] * torch.sin(t_scaled)
-        x[:, 1] = -x0[:, 0] * torch.sin(t_scaled) + x0[:, 1] * torch.cos(t_scaled)
+        t = 2 * np.pi * torch.rand(num_pnts, generator=torch_rng)
+        x[:, 0] = x0[:, 0] * torch.cos(t) + x0[:, 1] * torch.sin(t)
+        x[:, 1] = -x0[:, 0] * torch.sin(t) + x0[:, 1] * torch.cos(t)
 
         idx_sort_time = t.argsort()
 
-        return torch.cat((t[:, None], x), dim=-1)[idx_sort_time]
+        return torch.cat((t[:, None] / (2 * np.pi), x), dim=-1)[idx_sort_time]
 
     def generate_positions_and_neighbors(self):
         num_pnts = self.num_neighbors + 1
@@ -455,8 +452,8 @@ def run(cfg):
             run_training(cfg, model, *dataloaders[:-1])
 
     model.eval()
-    plot('output_train', model, next(iter(dataloaders[0]))[:100])
-    plot('output_val', model, next(iter(dataloaders[1]))[:100])
+    # plot('output_train', model, next(iter(dataloaders[0]))[:100])
+    # plot('output_val', model, next(iter(dataloaders[1]))[:100])
 
 
 

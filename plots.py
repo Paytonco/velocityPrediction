@@ -94,6 +94,21 @@ def loss_by_param(ax, cfg, xs, path_models):
     ax.set_ylabel('MSE')
 
 
+def plot_dataset(name, data):
+    # output = model(data.positions, data.neighbors).cpu().detach().numpy()
+    data = data.numpy()
+    fig, ax = plt.subplots()
+    ax.scatter(data.neighbors[:, :, 1], data.neighbors[:, :, 2],
+              label='Neighbors', color='blue')
+    ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              data.velocities[:, 0], data.velocities[:, 1], label='True', color='darkorange')
+    # ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              # output[:, 0], output[:, 1], label='Output', color='blue')
+    # ax.legend()
+    fig.savefig(f'dataset_{name}.{IMG_FMT}', **SAVEFIG_SETTINGS)
+    plt.close(fig)
+
+
 @hydra.main(version_base=None, config_path='configs', config_name='plots')
 def run(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
@@ -110,10 +125,12 @@ def run(cfg):
         toyModel.setup(model_cfg)
         model = toyModel.get_model(model_cfg.dataset.dim).to(model_cfg.setup.device)
         datasets = toyModel.get_dataset(model_cfg)[:2]
-        datasets = map(lambda a: toyModel.collate_fn(model_cfg, a), datasets)
+        datasets = list(map(lambda a: toyModel.collate_fn(model_cfg, a), datasets))
         model.eval()
         model.load_state_dict(model_checkpoint['model_state_dict'])
         models.append((path, model, datasets))
+
+    plot_dataset(model_cfg.dataset.name, datasets[0][torch.randperm(datasets[0].positions.size(0))[:40]])
 
     if cfg.plot == 'num_neighbors':
         xs = torch.tensor(list(map(get_num_neighbors, (p[0] for p in models)))) // 2
