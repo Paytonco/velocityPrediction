@@ -10,7 +10,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import seaborn as sns
 import matplotlib.pyplot as plt
+
+
+sns.set_context('paper', font_scale=1.4)
+
+
+IMG_FMT = 'pdf'
+SAVEFIG_SETTINGS = dict(format=IMG_FMT, bbox_inches='tight')
 
 
 # set in setup
@@ -57,6 +65,10 @@ class Batch(typing.NamedTuple):
             self.neighbors[idx],
             self.velocities[idx]
         )
+
+
+    def __len__(self):
+        return self.positions.shape[0]
 
 
 class DataSimple(Dataset):
@@ -416,17 +428,20 @@ def run_training(cfg, model, dataloader_train, dataloader_val):
 
 
 def plot(path, model, data):
-    output = model(data.positions, data.neighbors).cpu().detach().numpy()
-    data = data.numpy()
+    perm = torch.randperm(len(data), generator=torch_rng)[:40]
+    output = model(data.positions, data.neighbors)[perm].cpu().detach().numpy()
+    data = data[perm].numpy()
     fig, ax = plt.subplots()
-    ax.scatter(data.neighbors[:, :, 1], data.neighbors[:, :, 2],
-              label='Neighbors', color='green')
+    ax.scatter(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              label='State', color='darkorange')
     ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
-              data.velocities[:, 0], data.velocities[:, 1], label='True', color='red')
+              data.velocities[:, 0], data.velocities[:, 1], label='True', color='deepskyblue')
     ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
-              output[:, 0], output[:, 1], label='Output', color='blue')
+              output[:, 0], output[:, 1], label='Inferred', color='blue')
     ax.legend()
-    fig.savefig(f'{path}.pdf', format='pdf')
+    ax.set_xlabel('$x$')
+    ax.set_ylabel('$y$')
+    fig.savefig(f'{path}.{IMG_FMT}', **SAVEFIG_SETTINGS)
     plt.close(fig)
 
 
@@ -452,8 +467,8 @@ def run(cfg):
             run_training(cfg, model, *dataloaders[:-1])
 
     model.eval()
-    # plot('output_train', model, next(iter(dataloaders[0]))[:100])
-    # plot('output_val', model, next(iter(dataloaders[1]))[:100])
+    plot(f'output_train_{cfg.dataset.name}', model, next(iter(dataloaders[0]))[:100])
+    plot(f'output_val_{cfg.dataset.name}', model, next(iter(dataloaders[1]))[:100])
 
 
 

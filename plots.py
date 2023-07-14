@@ -87,7 +87,6 @@ def loss_by_param(ax, cfg, xs, path_models):
 
     z_star = 1.96
     x_axis = torch.unique_consecutive(xs)
-    ax.set_title('Validation Loss')
     ax.errorbar(x_axis, mean, z_star * stddev / n.sqrt(), fmt='o', linewidth=2, capsize=6)
     ax.set_xlabel('$n$')
     ax.set_xticks(x_axis)
@@ -98,13 +97,12 @@ def plot_dataset(name, data):
     # output = model(data.positions, data.neighbors).cpu().detach().numpy()
     data = data.numpy()
     fig, ax = plt.subplots()
-    ax.scatter(data.neighbors[:, :, 1], data.neighbors[:, :, 2],
-              label='Neighbors', color='blue')
+    ax.scatter(data.positions[:, 0, 1], data.positions[:, 0, 2],
+              label='Neighbors', color='darkorange')
     ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
-              data.velocities[:, 0], data.velocities[:, 1], label='True', color='darkorange')
-    # ax.quiver(data.positions[:, 0, 1], data.positions[:, 0, 2],
-              # output[:, 0], output[:, 1], label='Output', color='blue')
-    # ax.legend()
+              data.velocities[:, 0], data.velocities[:, 1], label='True', color='deepskyblue')
+    ax.set_xlabel('$x$')
+    ax.set_ylabel('$y$')
     fig.savefig(f'dataset_{name}.{IMG_FMT}', **SAVEFIG_SETTINGS)
     plt.close(fig)
 
@@ -130,7 +128,7 @@ def run(cfg):
         model.load_state_dict(model_checkpoint['model_state_dict'])
         models.append((path, model, datasets))
 
-    plot_dataset(model_cfg.dataset.name, datasets[0][torch.randperm(datasets[0].positions.size(0))[:40]])
+    plot_dataset(model_cfg.dataset.name, datasets[0][torch.randperm(datasets[0].positions.size(0), generator=toyModel.torch_rng)[:40]])
 
     if cfg.plot == 'num_neighbors':
         xs = torch.tensor(list(map(get_num_neighbors, (p[0] for p in models)))) // 2
