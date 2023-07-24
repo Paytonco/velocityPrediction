@@ -16,5 +16,4 @@ scv.tl.velocity(adata, mode='stochastic')
 scv.pl.velocity_graph(adata)
 scv.pl.velocity_embedding(adata, basis='umap')
 scv.tl.velocity_pseudotime(adata)
-mat = adata.X
 breakpoint()
