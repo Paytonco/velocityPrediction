@@ -1,0 +1,4 @@
+# scVelo requirements
+numpy==1.23.5  # scVelo's scv.tl.velocity_graph breaks with newer versions
+tqdm==4.65.0
+ipywidgets==8.0.7

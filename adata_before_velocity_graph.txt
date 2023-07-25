@@ -1,0 +1,39 @@
+# after running scv.pp.(filter_and_normalize,moments), scv.tl.velocity
+
+AnnData object with n_obs x n_vars = 3696 x 27998
+    obs: 'clusters_coarse', 'clusters', 'S_score', 'G2M_score', 'initial_size_unspliced', 'initial_size_spliced', 'initial_size', 'n_counts'
+    var: 'highly_variable_genes', 'gene_count_corr', 'velocity_gamma', 'velocity_qreg_ratio', 'velocity_r2', 'velocity_genes'
+    uns: 'clusters_coarse_colors', 'clusters_colors', 'day_colors', 'neighbors', 'pca', 'velocity_params'
+    obsm: 'X_pca', 'X_umap'
+    layers: 'spliced', 'unspliced', 'Ms', 'Mu', 'velocity', 'variance_velocity'
+    obsp: 'distances', 'connectivities'
+
+# after running scv.tl.velocity_graph
+
+AnnData object with n_obs x n_vars = 3696 x 27998
+    obs: 'clusters_coarse', 'clusters', 'S_score', 'G2M_score', 'initial_size_unspliced', 'initial_size_spliced', 'initial_size', 'n_counts', 'velocity_self_transition'
+    var: 'highly_variable_genes', 'gene_count_corr', 'velocity_gamma', 'velocity_qreg_ratio', 'velocity_r2', 'velocity_genes'
+    uns: 'clusters_coarse_colors', 'clusters_colors', 'day_colors', 'neighbors', 'pca', 'velocity_params', 'velocity_graph', 'velocity_graph_neg'
+    obsm: 'X_pca', 'X_umap'
+    layers: 'spliced', 'unspliced', 'Ms', 'Mu', 'velocity', 'variance_velocity'
+    obsp: 'distances', 'connectivities'
+
+# after running scv.tl.velocity_pseudotime
+
+AnnData object with n_obs x n_vars = 3696 x 27998
+    obs: 'clusters_coarse', 'clusters', 'S_score', 'G2M_score', 'initial_size_unspliced', 'initial_size_spliced', 'initial_size', 'n_counts', 'velocity_self_transition', 'root_cells', 'end_points', 'velocity_pseudotime'
+    var: 'highly_variable_genes', 'gene_count_corr', 'velocity_gamma', 'velocity_qreg_ratio', 'velocity_r2', 'velocity_genes'
+    uns: 'clusters_coarse_colors', 'clusters_colors', 'day_colors', 'neighbors', 'pca', 'velocity_params', 'velocity_graph', 'velocity_graph_neg'
+    obsm: 'X_pca', 'X_umap'
+    layers: 'spliced', 'unspliced', 'Ms', 'Mu', 'velocity', 'variance_velocity'
+    obsp: 'distances', 'connectivities'
+
+# after running scv.tl.velocity_embedding
+
+AnnData object with n_obs x n_vars = 3696 x 27998
+    obs: 'clusters_coarse', 'clusters', 'S_score', 'G2M_score', 'initial_size_unspliced', 'initial_size_spliced', 'initial_size', 'n_counts', 'velocity_self_transition', 'root_cells', 'end_points', 'velocity_pseudotime'
+    var: 'highly_variable_genes', 'gene_count_corr', 'velocity_gamma', 'velocity_qreg_ratio', 'velocity_r2', 'velocity_genes'
+    uns: 'clusters_coarse_colors', 'clusters_colors', 'day_colors', 'neighbors', 'pca', 'velocity_params', 'velocity_graph', 'velocity_graph_neg'
+    obsm: 'X_pca', 'X_umap', 'velocity_umap'
+    layers: 'spliced', 'unspliced', 'Ms', 'Mu', 'velocity', 'variance_velocity'
+    obsp: 'distances', 'connectivities'
