@@ -1,23 +1,16 @@
-setup:
-  rng_seed: 0
-  device: cpu
-  deterministic: true
-load:
-  checkpoint_path: ../../out/paytonco/cp_ds_${dataset.name}_nn_${dataset.num_neighbors}_sz_${dataset.size}_eps_${dataset.epsilon}.pt
+out_dir: ../../out/paytonco
 dataset:
-  name: simple
+  name: Simple
+  path: ${out_dir}/data/${dataset.name}/${dataset.name}.csv
+  num_neighbors: 5
+  batch_size: 2
+model:
   dim: 2
-  center_pnt_idx: 0
-  num_neighbors: 10
-  epsilon: 0.1
-  size: 100
-  size_train: .7
-  size_val: .2
-  size_test: .1
-  batch_size_train: 2
-  batch_size_val: ${dataset.batch_size_train}
-  batch_size_test: ${dataset.batch_size_train}
-train:
-  epochs: 100
-  print_stats: true
-  repeats: 0
+trainer:
+  fit: true
+  predict: true
+  logger: false
+  max_epochs: 10
+  default_root_dir: ${out_dir}/ckpts/${dataset.name}
+  devices: 1
+  accelerator: gpu
