@@ -19,6 +19,24 @@ class KNNGraph(T.KNNGraph):
         return data
 
 
+class FeaturesLabels(T.BaseTransform):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, data):
+        node_i, node_j = data.edge_index
+        t_diff = data[node_i] - data[node_j]
+        pos_diff = data[node_i] - data[node_j]
+        r2 = (pos_diff**2).sum(1)
+
+        data = Data(
+            x=torch.cat((t_diff, r2), dim=1),
+            pos_diff=pos_diff,
+            y=data.vel,
+            edge_index=data.edge_index
+        )
+
+
 def scvelo_graph(path, transform=None):
     df = pd.read_csv(path).sort_values('t')
     t = torch.tensor(df['t'].to_numpy())
