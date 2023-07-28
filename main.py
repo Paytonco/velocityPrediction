@@ -1,11 +1,9 @@
+import lightning.pytorch as pl
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as tg_nn
-
-
-def normalize(vec):
-    return nn.functional.normalize(vec, dim=-1)
 
 
 class Model(nn.Module):
@@ -26,7 +24,7 @@ class Model(nn.Module):
         diff_pos = data.pos[node_i] - data.pos[node_j]
         r2 = (diff_pos**2).sum(1)
         weights = self.model(torch.cat((diff_t, r2), dim=1))
-        return tg_nn.global_add_pool(weights * normalize(diff_pos), node_i)
+        return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), node_i)
 
 
 class ModelMessagePassing(tg_nn.MessagePassing):
@@ -54,4 +52,22 @@ class ModelMessagePassing(tg_nn.MessagePassing):
         return self.propagate(edge_index, weights=weights, diff_pos=diff_pos)
 
     def message(self, weights_i, diff_pos_i):
-        return weights_i * normalize(diff_pos_i)
+        return weights_i * F.normalize(diff_pos_i, dim=1)
+
+
+class LitModel(pl.LightningModule):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def loss(self, input, target):
+        return F.mse_loss(input, target)
+
+    def training_step(self, batch):
+        return self.loss(self.model(batch), batch.vel)
+
+    def validation_step(self, batch):
+        return self.loss(self.model(batch), batch.vel)
+
+    def predict_step(self, batch):
+        return self.model(batch)
