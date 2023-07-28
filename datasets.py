@@ -1,7 +1,35 @@
 import numpy as np
+import pandas as pd
 import torch
 import torch_geometric.transforms as T
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data
+
+
+class KNNGraph(T.KNNGraph):
+    def __init__(self, attr, *args, **kwargs):
+        self.attr = attr
+        super().__init__(*args, **kwargs)
+
+    def forward(self, data):
+        pos = data.pos
+        data.pos = data[self.attr]
+        data = super()(data)
+        data.pos = pos
+
+        return data
+
+
+def scvelo_graph(path, transform=None):
+    df = pd.read_csv(path).sort_values('t')
+    t = torch.tensor(df['t'].to_numpy())
+    pos = torch.tensor(df[['x1', 'x2']].to_numpy())
+    vel = torch.tensor(df[['v1', 'v2']].to_numpy())
+    data = Data(t=t, pos=pos, vel=vel)
+
+    if transform:
+        data = transform(data)
+
+    return data
 
 
 def bifurcation_pnts(num_pnts, epsilon):
@@ -56,3 +84,8 @@ def oscillation_pnts(num_pnts, epsilon):
     v = torch.stack((x[:, 1], -x[:, 0])).T
 
     return t, x, v
+
+
+if __name__ == '__main__':
+    data = scvelo_graph('data/pancreas/pancreas.csv')
+    breakpoint()
