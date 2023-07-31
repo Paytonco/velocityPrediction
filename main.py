@@ -80,6 +80,7 @@ def main(cfg):
     trainer = pl.Trainer(
         devices=cfg.trainer.devices,
         accelerator=cfg.trainer.accelerator,
+        default_root_dir=cfg.trainer.default_root_dir,
         max_epochs=cfg.trainer.max_epochs,
         logger=cfg.trainer.logger,
         callbacks=CallbackPlotting(),
