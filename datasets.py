@@ -11,14 +11,51 @@ torch.set_default_dtype(torch.float64)
 
 class KNNGraph(T.KNNGraph):
     def __init__(self, attr, *args, **kwargs):
-        self.attr = attr
         super().__init__(*args, **kwargs)
+        self.attr = attr
 
-    def forward(self, data):
+    def __call__(self, data):
         pos = data.pos
         data.pos = data[self.attr]
-        data = super()(data)
+        data = super().__call__(data)
         data.pos = pos
+
+        return data
+
+
+class RadiusGraph(T.RadiusGraph):
+    def __init__(self, attr, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attr = attr
+
+    def __call__(self, data):
+        pos = data.pos
+        data.pos = data[self.attr]
+        data = super().__call__(data)
+        data.pos = pos
+
+        return data
+
+
+class SlidingWindowGraph(T.BaseTransform):
+    def __init__(self, num_prev_neighbors, window_size):
+        super().__init__()
+        self.num_prev_neighbors = num_prev_neighbors
+        self.window_size = window_size
+
+    def __call__(self, data):
+        sort = data.t.argsort()
+        for a in ('t', 'pos', 'vel'):
+            data[a] = data[a][sort]
+        assert (data.t.diff() >= 0).all(), 'Time must be in non-decreasing order.'
+        windows = torch.arange(data.t.numel()).unfold(0, self.window_size, 1)
+        mask_poi = torch.zeros(self.window_size, dtype=bool)
+        mask_poi[self.num_prev_neighbors] = True
+        node_i = windows[:, mask_poi].squeeze().repeat_interleave(self.window_size - 1)
+        node_j = windows[:, ~mask_poi].ravel()
+        data.edge_index = torch.stack((node_j, node_i))
+        # points near the time interval boundary have no neighbors
+        data = data.subgraph(node_j)
 
         return data
 
@@ -27,12 +64,10 @@ class NeighborsDataset(InMemoryDataset):
     seed = 0
     generator = torch.Generator()
 
-    def __init__(self, num_neighbors, neighbor_attr='t', path=None, transform=None):
-        super().__init__(None, transform=None)
+    def __init__(self, set_neighbors_transform, path=None):
+        super().__init__(None)
+        self.set_neighbors_transform = set_neighbors_transform
         self.path = path
-        self.neighbor_attr = neighbor_attr
-        self.num_neighbors = num_neighbors
-        self.set_neighbors = KNNGraph(self.neighbor_attr, self.num_neighbors)
         self.generator.manual_seed(self.seed)
         data = self.load_data()
         data_list = self.split_neighborhoods_into_data(data)
@@ -42,21 +77,19 @@ class NeighborsDataset(InMemoryDataset):
         raise NotImplementedError
 
     def points_to_data(self, t, pos, vel):
-        sort = t.argsort()
-        t, pos, vel = t[sort], pos[sort], vel[sort]
         data = Data(t=t, pos=pos, vel=vel)
         return data
 
     def split_neighborhoods_into_data(self, data):
-        data = self.set_neighbors(data)
+        data = self.set_neighbors_transform(data)
         node_j, node_i = data.edge_index
         data_list = []
-        for i in range(data.num_nodes):
-            neighborhood = data.subgraph(node_j[node_i ==i])
-            neighborhood.poi_t = data.t[[i]]
-            neighborhood.poi_pos = data.pos[[i]]
-            neighborhood.poi_vel = data.vel[[i]]
-            assert neighborhood.num_nodes == self.num_neighbors, f'{neighborhood.num_nodes}'
+        for i in node_i:
+            idx = slice(i, i+1)  # -> [i:i+1]
+            neighborhood = data.subgraph(node_j[node_i == i])
+            neighborhood.poi_t = data.t[idx]
+            neighborhood.poi_pos = data.pos[idx]
+            neighborhood.poi_vel = data.vel[idx]
             data_list.append(neighborhood)
         return data_list
 
@@ -193,5 +226,7 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size)
 
-    def predict_dataloader(self):
-        return DataLoader(self.val, batch_size=len(self.val))
+    def predict_dataloader(self, split='val', batch_size=None):
+        ds = getattr(self, split)
+        batch_size = batch_size or len(ds)
+        return DataLoader(ds, batch_size=batch_size)

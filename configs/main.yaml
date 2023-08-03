@@ -2,15 +2,20 @@ out_dir: ../../out/paytonco
 dataset:
   name: Simple
   path: ${out_dir}/data/${dataset.name}/${dataset.name}.csv
-  num_neighbors: 5
+  neighbors: slidingwindow
+  num_neighbors: 4
+  num_prev_neighbors: null
+  neighbor_radius: .05
   batch_size: 2
 model:
   dim: 2
 trainer:
   fit: true
+  fit_ckpt: null
   predict: true
-  logger: false
-  max_epochs: 10
+  pred_ckpt: null
+  logger: true
+  max_epochs: 100
   default_root_dir: ${out_dir}/ckpts/${dataset.name}
   ckpt_path: ${out_dir}/ckpts/${dataset.name}
   devices: 1
