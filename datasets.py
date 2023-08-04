@@ -77,6 +77,7 @@ class NeighborsDataset(InMemoryDataset):
         raise NotImplementedError
 
     def points_to_data(self, t, pos, vel):
+        t, pos, vel = t[::2], pos[::2], vel[::2]
         data = Data(t=t, pos=pos, vel=vel)
         return data
 

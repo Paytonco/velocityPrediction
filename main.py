@@ -30,7 +30,7 @@ class Model(pl.LightningModule):
         diff_t = t - poi_t[batch]
         diff_pos = pos - poi_pos[batch]
         r2 = (diff_pos**2).sum(1)
-        weights = self.model(torch.stack((diff_t, r2)).T)
+        weights = self.model(torch.stack((diff_t, r2), dim=1))
         return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
 
     def configure_optimizers(self):
