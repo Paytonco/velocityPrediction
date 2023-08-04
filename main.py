@@ -112,7 +112,7 @@ def main(cfg):
         ds_transform = datasets.RadiusGraph('t', cfg.dataset.neighbor_radius, max_num_neighbors=cfg.dataset.num_neighbors)
     else:
         raise ValueError(f'Invalid method for finding neighbors: {cfg.dataset.neighbors}')
-    ds = getattr(datasets, cfg.dataset.name)(ds_transform, path=cfg.dataset.path)
+    ds = getattr(datasets, cfg.dataset.name)(ds_transform, cfg.dataset.sparsity_step, path=cfg.dataset.path)
     model = Model(cfg.model.dim)
     dm = datasets.DataModule(ds, cfg.dataset.batch_size)
     ckpt_cb = pl.callbacks.ModelCheckpoint(monitor='val_loss')
