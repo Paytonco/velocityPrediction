@@ -9,6 +9,7 @@ import torch_geometric as tg
 import torch_geometric.nn as tg_nn
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
 
 import datasets
 
@@ -59,18 +60,16 @@ def plot_true_vs_inferred(out, data, neighbor_lines=True):
     if neighbor_lines:
         poi_pos = data.poi_pos[data.batch]
         diff_pos = F.normalize(data.pos - poi_pos, dim=1)
-        ax.quiver(poi_pos[:, 0], poi_pos[:, 1],
-                  diff_pos[:, 0], diff_pos[:, 1],
+        ax.quiver(poi_pos[:, 0], poi_pos[:, 1], diff_pos[:, 0], diff_pos[:, 1],
                   color='red', headwidth=1)
         # lc = LineCollection(torch.stack((poi_pos, poi_pos + diff_pos), dim=1), linestyles='-', colors='r')
         # ax.add_collection(lc)
-    ax.scatter(data.poi_pos[:, 0], data.poi_pos[:, 1],
-               label='State', c='orange')  # data.poi_t)
-    ax.quiver(data.poi_pos[:, 0], data.poi_pos[:, 1],
-              data.poi_vel[:, 0], data.poi_vel[:, 1], label='True', color='deepskyblue')
-    ax.quiver(data.poi_pos[:, 0], data.poi_pos[:, 1],
-              out[:, 0], out[:, 1], label='Inferred', color='blue')
-    ax.legend()
+    ax.scatter(data.poi_pos[:, 0], data.poi_pos[:, 1], label='State', c='orange')
+    cm = LinearSegmentedColormap.from_list('true_inferred', ['deepskyblue', 'blue'])
+    pos = data.poi_pos.repeat(2, 1)
+    vel = torch.cat((data.poi_vel, out))
+    color_vals = torch.tensor([0., 1.]).repeat_interleave(data.poi_pos.size(0))
+    ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color=cm(color_vals))
     ax.set_xlabel('$x$')
     ax.set_ylabel('$y$')
     return fig

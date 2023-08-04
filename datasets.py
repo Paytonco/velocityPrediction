@@ -44,9 +44,6 @@ class SlidingWindowGraph(T.BaseTransform):
         self.window_size = window_size
 
     def __call__(self, data):
-        sort = data.t.argsort()
-        for a in ('t', 'pos', 'vel'):
-            data[a] = data[a][sort]
         assert (data.t.diff() >= 0).all(), 'Time must be in non-decreasing order.'
         windows = torch.arange(data.t.numel()).unfold(0, self.window_size, 1)
         mask_poi = torch.zeros(self.window_size, dtype=bool)
@@ -64,9 +61,10 @@ class NeighborsDataset(InMemoryDataset):
     seed = 0
     generator = torch.Generator()
 
-    def __init__(self, set_neighbors_transform, path=None):
+    def __init__(self, set_neighbors_transform, sparsity_step, path=None):
         super().__init__(None)
         self.set_neighbors_transform = set_neighbors_transform
+        self.sparsity_step = sparsity_step
         self.path = path
         self.generator.manual_seed(self.seed)
         data = self.load_data()
@@ -77,7 +75,10 @@ class NeighborsDataset(InMemoryDataset):
         raise NotImplementedError
 
     def points_to_data(self, t, pos, vel):
-        t, pos, vel = t[::2], pos[::2], vel[::2]
+        sort = t.argsort()
+        t, pos, vel = t[sort], pos[sort], vel[sort]
+        step = self.sparsity_step
+        t, pos, vel = t[::step], pos[::step], vel[::step]
         data = Data(t=t, pos=pos, vel=vel)
         return data
 

@@ -7,6 +7,7 @@ dataset:
   num_prev_neighbors: null
   neighbor_radius: .05
   batch_size: 2
+  sparsity_step: 11
 model:
   dim: 2
 trainer:
