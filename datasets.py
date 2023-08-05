@@ -86,7 +86,7 @@ class NeighborsDataset(InMemoryDataset):
         data = self.set_neighbors_transform(data)
         node_j, node_i = data.edge_index
         data_list = []
-        for i in node_i:
+        for i in torch.unique(node_i):
             idx = slice(i, i+1)  # -> [i:i+1]
             neighborhood = data.subgraph(node_j[node_i == i])
             neighborhood.poi_t = data.t[idx]

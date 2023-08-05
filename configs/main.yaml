@@ -17,7 +17,7 @@ trainer:
   pred_ckpt: null
   logger: true
   max_epochs: 100
-  default_root_dir: ${out_dir}/ckpts/${dataset.name}
+  default_root_dir: ${out_dir}/ckpts
   ckpt_path: ${out_dir}/ckpts/${dataset.name}
   devices: 1
   accelerator: gpu
