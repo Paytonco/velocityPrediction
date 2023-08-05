@@ -1,3 +1,4 @@
+import pathlib
 import hydra
 import omegaconf
 from omegaconf import OmegaConf
@@ -20,11 +21,15 @@ class Model(pl.LightningModule):
         self.save_hyperparameters()
         self.dim = dim
         self.model = nn.Sequential(
-            nn.Linear(self.dim, 20),
+            nn.Linear(2, 10),
             nn.ReLU(),
-            nn.Linear(20, 20),
+            nn.Linear(10, 20),
             nn.ReLU(),
-            nn.Linear(20, 1),
+            nn.Linear(20, 10),
+            nn.ReLU(),
+            nn.Linear(10, 5),
+            nn.ReLU(),
+            nn.Linear(5, 1),
         )
 
     def forward(self, t, pos, poi_t, poi_pos, batch):
@@ -32,6 +37,16 @@ class Model(pl.LightningModule):
         diff_pos = pos - poi_pos[batch]
         r2 = (diff_pos**2).sum(1)
         weights = self.model(torch.stack((diff_t, r2), dim=1))
+        return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
+
+    def forward2(self, t, pos, poi_t, poi_pos, batch):
+        diff_t = t - poi_t[batch]
+        diff_pos = pos - poi_pos[batch]
+        r2 = (diff_pos**2).sum(1)
+        centroid = tg_nn.global_add_pool(pos, batch)
+        diff_centroid = (centroid - poi_pos)[batch]
+        cosine = (diff_pos * diff_centroid).sum(1) / (r2 * (diff_centroid**2).sum(1)).sqrt()
+        weights = self.model(torch.stack((diff_t, r2, cosine), dim=1))
         return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
 
     def configure_optimizers(self):
@@ -90,7 +105,7 @@ class PlotsCB(pl.callbacks.Callback):
             batch = next(iter(dl)).to(pl_module.device)
             out = pl_module.forward(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
             fig = plot_true_vs_inferred(out.cpu(), batch.cpu())
-            fig.savefig(f'{s}_true_vs_inferred.pdf', format='pdf')
+            fig.savefig(f'{trainer.log_dir}/{s}_true_vs_inferred.pdf', format='pdf')
             plt.close(fig)
 
     def on_predict_end(self, trainer, pl_module):
@@ -116,14 +131,18 @@ def main(cfg):
     model = Model(cfg.model.dim)
     dm = datasets.DataModule(ds, cfg.dataset.batch_size)
     ckpt_cb = pl.callbacks.ModelCheckpoint(monitor='val_loss')
+    logger_version = None
+    if cfg.trainer.pred_ckpt:
+        logger_version = int(pathlib.Path(cfg.trainer.pred_ckpt).parent.parent.stem.split('_')[1])
+    logger = pl.loggers.TensorBoardLogger(f'{cfg.trainer.default_root_dir}', name=cfg.dataset.name, version=logger_version)
     trainer = pl.Trainer(
         devices=cfg.trainer.devices,
         accelerator=cfg.trainer.accelerator,
         default_root_dir=cfg.trainer.default_root_dir,
         max_epochs=cfg.trainer.max_epochs,
-        logger=cfg.trainer.logger,
+        logger=not cfg.trainer.logger or logger,
         callbacks=[ckpt_cb, PlotsCB()],
-        precision=64
+        precision=64,
     )
     if cfg.trainer.fit:
         trainer.fit(model, dm, ckpt_path=cfg.trainer.fit_ckpt)
