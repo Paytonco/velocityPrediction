@@ -15,11 +15,9 @@ from matplotlib.colors import LinearSegmentedColormap
 import datasets
 
 
-class Model(pl.LightningModule):
-    def __init__(self, dim):
+class MLP(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.save_hyperparameters()
-        self.dim = dim
         self.model = nn.Sequential(
             nn.Linear(2, 10),
             nn.ReLU(),
@@ -39,7 +37,23 @@ class Model(pl.LightningModule):
         weights = self.model(torch.stack((diff_t, r2), dim=1))
         return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
 
-    def forward2(self, t, pos, poi_t, poi_pos, batch):
+
+class MLPCentroidDot(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(3, 10),
+            nn.ReLU(),
+            nn.Linear(10, 20),
+            nn.ReLU(),
+            nn.Linear(20, 10),
+            nn.ReLU(),
+            nn.Linear(10, 5),
+            nn.ReLU(),
+            nn.Linear(5, 1),
+        )
+
+    def forward(self, t, pos, poi_t, poi_pos, batch):
         diff_t = t - poi_t[batch]
         diff_pos = pos - poi_pos[batch]
         r2 = (diff_pos**2).sum(1)
@@ -49,11 +63,21 @@ class Model(pl.LightningModule):
         weights = self.model(torch.stack((diff_t, r2, cosine), dim=1))
         return tg_nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
 
+
+class Model(pl.LightningModule):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
     def configure_optimizers(self):
         return torch.optim.AdamW(self.model.parameters())
 
     def loss(self, input, target):
-        return F.mse_loss(input, target)
+        r = ((target**2).sum(1) + 1e-5).sqrt()
+        return F.mse_loss(input / r, target / r)
+
+    def forward(self, t, pos, poi_t, poi_pos, batch):
+        return self.model(t, pos, poi_t, poi_pos, batch)
 
     def training_step(self, batch, batch_idx):
         out = self(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
@@ -128,7 +152,7 @@ def main(cfg):
     else:
         raise ValueError(f'Invalid method for finding neighbors: {cfg.dataset.neighbors}')
     ds = getattr(datasets, cfg.dataset.name)(ds_transform, cfg.dataset.sparsity_step, path=cfg.dataset.path)
-    model = Model(cfg.model.dim)
+    model = Model(globals()[cfg.model]())
     dm = datasets.DataModule(ds, cfg.dataset.batch_size)
     ckpt_cb = pl.callbacks.ModelCheckpoint(monitor='val_loss')
     logger_version = None
