@@ -5,6 +5,7 @@ import torch
 import torch_geometric.transforms as T
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
+import scvelo
 
 torch.set_default_dtype(torch.float64)
 
@@ -152,6 +153,18 @@ class Simple(NeighborsDataset):
             torch.ones(pos.size(0)),
             .2 * pos[:, 0] * (pos[:, 1] - 1)
         )).T
+
+        return self.points_to_data(t, pos, vel)
+
+
+class SCVeloSimulation(NeighborsDataset):
+    def load_data(self):
+        if not self.path:
+            raise ValueError('Provide a path to the dataset')
+        df = pd.read_csv(self.path)
+        t = torch.tensor(df['t'].to_numpy())
+        pos = torch.tensor(df[['x1', 'x2']].to_numpy())
+        vel = torch.tensor(df[['v1', 'v2']].to_numpy())
 
         return self.points_to_data(t, pos, vel)
 
