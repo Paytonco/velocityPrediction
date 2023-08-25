@@ -1,7 +1,1 @@
-hydra:
-  job:
-    chdir: false
-  run:
-    dir: test  #${setup.save_dir}
-plot: num_neighbors
-model_paths: []
+data_paths: []
