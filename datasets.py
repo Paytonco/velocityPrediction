@@ -1,4 +1,5 @@
 import lightning.pytorch as pl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -38,6 +39,12 @@ class RadiusGraph(T.RadiusGraph):
         return data
 
 
+class AnnulusGraph(T.BaseTransform):
+    def __init__(self, attr, r1, r2, **kwargs):
+        self.r1_graph = T.RadiusGraph(r1, **kwargs)
+        self.r2_graph = T.RadiusGraph(r2, **kwargs)
+
+
 class SlidingWindowGraph(T.BaseTransform):
     def __init__(self, num_prev_neighbors, window_size):
         super().__init__()
@@ -58,18 +65,33 @@ class SlidingWindowGraph(T.BaseTransform):
         return data
 
 
+class PosBoxFilter:
+    def __init__(self, x1, x2, y1, y2):
+        self.x1 = x1
+        self.x2 = x2
+        self.y1 = y1
+        self.y2 = y2
+
+    def __call__(self, data):
+        x, y = data.poi_pos[0]
+        return (self.x1 <= x <= self.x2) and (self.y1 <= y <= self.y2)
+
+
 class NeighborsDataset(InMemoryDataset):
     seed = 0
     generator = torch.Generator()
 
-    def __init__(self, set_neighbors_transform, sparsity_step, path=None):
+    def __init__(self, set_neighbors_transform, sparsity_step, path=None, filter=None):
         super().__init__(None)
         self.set_neighbors_transform = set_neighbors_transform
+        self.filter = filter
         self.sparsity_step = sparsity_step
         self.path = path
         self.generator.manual_seed(self.seed)
         data = self.load_data()
         data_list = self.split_neighborhoods_into_data(data)
+        if self.filter:
+            data_list = [*filter(self.filter, data_list)]
         self.data, self.slices = self.collate(data_list)
 
     def load_data(self):
@@ -218,10 +240,11 @@ class Pancreas(NeighborsDataset):
 
 
 class DataModule(pl.LightningDataModule):
-    def __init__(self, dataset, batch_size, transform=None, num_workers=8):
+    def __init__(self, dataset, batch_size, pred_split='val', transform=None, num_workers=8):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
+        self.pred_split = pred_split
         self.transform = None
         self.generator = torch.Generator()
         self.seed = 0
@@ -241,7 +264,29 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size)
 
-    def predict_dataloader(self, split='val', batch_size=None):
+    def predict_dataloader(self, split=None, batch_size=None):
+        if split is None:
+            split = self.pred_split
         ds = getattr(self, split)
         batch_size = batch_size or len(ds)
         return DataLoader(ds, batch_size=batch_size)
+
+
+def plot_dataset(data):
+    fig, ax = plt.subplots()
+    pos, vel = data.poi_pos, data.poi_vel
+    ax.scatter(pos[:, 0], pos[:, 1], label='State', c='orange')
+    ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='deepskyblue')
+    ax.set_xlabel('$x$')
+    ax.set_ylabel('$y$')
+    return fig
+
+
+if __name__ == '__main__':
+    filter = PosBoxFilter(-15, 15, -6, -2.5)
+    ds_transform = SlidingWindowGraph(2, 8 + 1)
+    ds = Pancreas(ds_transform, 1, path='../../out/paytonco/data/Pancreas/Pancreas.csv', filter=filter)
+    dl = DataLoader(ds, batch_size=len(ds))
+    data = next(iter(dl))
+    fig = plot_dataset(data)
+    fig.savefig('Pancreas.pdf', format='pdf')

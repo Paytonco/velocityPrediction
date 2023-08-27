@@ -1,4 +1,5 @@
 out_dir: ../../out/paytonco
+rng_seed: 0
 dataset:
   name: Simple
   path: ${out_dir}/data/${dataset.name}/${dataset.name}.csv
@@ -8,8 +9,8 @@ dataset:
   neighbor_radius: .05
   batch_size: 2
   sparsity_step: 11
-model:
-  dim: 2
+  pred_split: val
+model: MLP
 trainer:
   fit: true
   fit_ckpt: null
@@ -17,7 +18,8 @@ trainer:
   pred_ckpt: null
   logger: true
   max_epochs: 100
-  default_root_dir: ${out_dir}/ckpts
+  default_root_dir: ${out_dir}/ckpts/${dataset.name}/${model}
   ckpt_path: ${out_dir}/ckpts/${dataset.name}
   devices: 1
   accelerator: gpu
+  stats: false

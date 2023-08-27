@@ -1,4 +1,5 @@
-import pathlib
+from collections import defaultdict
+from pathlib import Path
 import hydra
 import omegaconf
 from omegaconf import OmegaConf
@@ -31,7 +32,7 @@ class MLP(nn.Module):
         )
 
     def forward(self, t, pos, poi_t, poi_pos, batch):
-        diff_t = t - poi_t[batch]
+        diff_t = torch.sign(t - poi_t[batch])
         diff_pos = pos - poi_pos[batch]
         r2 = (diff_pos**2).sum(1)
         weights = self.model(torch.stack((diff_t, r2), dim=1))
@@ -65,15 +66,18 @@ class MLPCentroidDot(nn.Module):
 
 
 class Model(pl.LightningModule):
-    def __init__(self, model):
+    def __init__(self, model, cfg):
         super().__init__()
+        self.save_hyperparameters(ignore=['model'])
+        self.cfg = cfg  # pass entire parameter dict for saving as hyperparameter
         self.model = model
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.model.parameters())
 
     def loss(self, input, target):
-        r = ((target**2).sum(1) + 1e-5).sqrt()
+        r = ((target**2).sum(1, keepdim=True) + 1e-5).sqrt()
+        # return F.mse_loss(input, target)
         return F.mse_loss(input / r, target / r)
 
     def forward(self, t, pos, poi_t, poi_pos, batch):
@@ -91,7 +95,10 @@ class Model(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         out = self(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
-        return out
+        return dict(
+            mse=F.mse_loss(out, batch.poi_vel),
+            scaled_mse=self.loss(out, batch.poi_vel)
+        )
 
 
 def plot_true_vs_inferred(out, data, neighbor_lines=True):
@@ -114,7 +121,7 @@ def plot_true_vs_inferred(out, data, neighbor_lines=True):
     return fig
 
 
-class PlotsCB(pl.callbacks.Callback):
+class PlotCB(pl.callbacks.Callback):
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         self.log('train_loss', outputs['loss'], prog_bar=True, batch_size=batch.t.numel())
 
@@ -136,10 +143,39 @@ class PlotsCB(pl.callbacks.Callback):
         self.on_validation_end(trainer, pl_module)
 
 
+class SavedStatsCB(pl.callbacks.Callback):
+    def __init__(self):
+        self.pred_iter = 0
+
+    def on_predict_start(self, trainer, pl_module):
+        self.stats = defaultdict(list)
+
+    def on_predict_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self.stats['mse'].append(outputs['mse'])
+        self.stats['scaled_mse'].append(outputs['scaled_mse'])
+
+    def on_predict_end(self, trainer, pl_module):
+        self.stats['num_neighbors'] = pl_module.cfg.dataset.num_neighbors
+
+        for d in trainer.datamodule.predict_dataloader():
+            self.stats['times'].append(d.poi_t)
+
+        self.stats['mse_over_all_batches'] = torch.stack(self.stats['mse']).mean().item()
+        self.stats['scaled_mse_over_all_batches'] = torch.stack(self.stats['scaled_mse']).mean().item()
+        self.stats['mean_time_step'] = torch.stack(self.stats['times']).sort()[0].diff().mean().item()
+        del self.stats['mse']
+        del self.stats['scaled_mse']
+        del self.stats['times']
+
+        torch.save(self.stats, f'{trainer.log_dir}/{self.pred_iter}.pt')
+        self.pred_iter += 1
+
+
 @hydra.main(version_base=None, config_path='configs', config_name='main')
 def main(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
-    pl.seed_everything(0, workers=True)
+    pl.seed_everything(cfg.rng_seed, workers=True)
+
     if cfg.dataset.neighbors == 'knn':
         ds_transform = datasets.KNNGraph('t', cfg.dataset.num_neighbors)
     elif cfg.dataset.neighbors == 'slidingwindow':
@@ -151,23 +187,34 @@ def main(cfg):
         ds_transform = datasets.RadiusGraph('t', cfg.dataset.neighbor_radius, max_num_neighbors=cfg.dataset.num_neighbors)
     else:
         raise ValueError(f'Invalid method for finding neighbors: {cfg.dataset.neighbors}')
+
+    # filter = datasets.PosBoxFilter(-15, 15, -6, -2.5)
+    # ds = getattr(datasets, cfg.dataset.name)(ds_transform, cfg.dataset.sparsity_step, path=cfg.dataset.path, filter=filter)
     ds = getattr(datasets, cfg.dataset.name)(ds_transform, cfg.dataset.sparsity_step, path=cfg.dataset.path)
-    model = Model(globals()[cfg.model]())
-    dm = datasets.DataModule(ds, cfg.dataset.batch_size)
+    model = Model(globals()[cfg.model](), cfg)
+    dm = datasets.DataModule(ds, cfg.dataset.batch_size, cfg.dataset.pred_split)
+
     ckpt_cb = pl.callbacks.ModelCheckpoint(monitor='val_loss')
-    logger_version = None
-    if cfg.trainer.pred_ckpt:
-        logger_version = int(pathlib.Path(cfg.trainer.pred_ckpt).parent.parent.stem.split('_')[1])
-    logger = pl.loggers.TensorBoardLogger(f'{cfg.trainer.default_root_dir}', name=cfg.dataset.name, version=logger_version)
+    if cfg.trainer.stats:
+        callbacks = [SavedStatsCB()]
+        if cfg.trainer.pred_ckpt:
+            logger = pl.loggers.TensorBoardLogger(Path(cfg.trainer.pred_ckpt).parent.parent, name='stats', version=cfg.dataset.name)
+        else:
+            logger = pl.loggers.TensorBoardLogger(cfg.trainer.default_root_dir, name='stats', version=cfg.dataset.name)
+    else:
+        callbacks = [ckpt_cb, PlotCB()]
+        logger = pl.loggers.TensorBoardLogger(cfg.trainer.default_root_dir, name='')
+
     trainer = pl.Trainer(
         devices=cfg.trainer.devices,
         accelerator=cfg.trainer.accelerator,
         default_root_dir=cfg.trainer.default_root_dir,
         max_epochs=cfg.trainer.max_epochs,
         logger=not cfg.trainer.logger or logger,
-        callbacks=[ckpt_cb, PlotsCB()],
+        callbacks=callbacks,
         precision=64,
     )
+
     if cfg.trainer.fit:
         trainer.fit(model, dm, ckpt_path=cfg.trainer.fit_ckpt)
     if cfg.trainer.predict:
