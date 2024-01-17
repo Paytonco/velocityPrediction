@@ -1,0 +1,33 @@
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'rna_vel_pred'
+authors = [
+    {name = 'Taos Transue', email = 'taos.transue@utah.edu'},
+    {name = 'Payton J. Thomas', email = 'p5thomas@ucsd.edu'},
+]
+description = ''
+readme = 'README.md'
+requires-python = '>=3.10'
+license = {text = 'MIT'}
+dependencies = [
+    'scvelo',
+    'lightning',
+    'torch_geometric',
+    # pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.1.0+cpu.html
+    'hydra-core',
+    'wandb',
+    'seaborn',
+    'tqdm',
+    'jupyterlab',
+    'flatten_json',
+]
+dynamic = ['version']
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    'ignore:Deprecated call to `pkg_resources:DeprecationWarning',
+    'ignore:pkg_resources:DeprecationWarning',
+]

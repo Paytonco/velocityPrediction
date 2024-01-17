@@ -1,3 +1,5 @@
 **/__pycache__/**
 **/*.pt
 **/*.h5ad
+**/*.egg-info
+.venv

@@ -282,6 +282,22 @@ def plot_dataset(data):
     return fig
 
 
+def get_transform(cfg, rng_seed=0):
+    with pl.utilities.seed.isolate_rng():
+        pl.seed_everything(rng_seed, workers=True)
+        pass
+
+
+def get_dataset(cfg, rng_seed=0):
+    with pl.utilities.seed.isolate_rng():
+        pl.seed_everything(rng_seed, workers=True)
+        transform = get_transform(cfg.transform)
+        if cfg.name == '':
+            ds = Simple(transform, cfg.sparsity_step, path=cfg.path)
+        else:
+            raise ValueError(f'Unknown dataset: {cfg.name}')
+
+
 if __name__ == '__main__':
     filter = PosBoxFilter(-15, 15, -6, -2.5)
     ds_transform = SlidingWindowGraph(2, 8 + 1)
