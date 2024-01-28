@@ -22,6 +22,7 @@ trainer:
   fit: true
   check_val_every_n_epoch: 1
   val: false
+  test: false
   pred: false
   ckpt: last
   logger: true

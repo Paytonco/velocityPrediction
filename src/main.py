@@ -116,7 +116,7 @@ def main(cfg):
         for v in cfg.dataset
     ]))
 
-    dataloaders = {k: DataLoader(ds, batch_size=cfg.trainer.batch_size)
+    dataloaders = {k: DataLoader(ds.shuffle(), batch_size=cfg.trainer.batch_size)
                    for k, ds in zip(('train', 'val', 'test'), splits)}
 
     model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)

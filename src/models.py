@@ -1,14 +1,15 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch_geometric as tg
 import lightning.pytorch as pl
+
+import utils
 
 
 class First(nn.Module):
     def __init__(self):
         super().__init__()
-        self.model = nn.Sequential(
+        self.weighter = nn.Sequential(
             nn.Linear(2, 10),
             nn.ReLU(),
             nn.Linear(10, 20),
@@ -24,8 +25,10 @@ class First(nn.Module):
         diff_t = torch.sign(t - poi_t[batch])
         diff_pos = pos - poi_pos[batch]
         r2 = diff_pos.pow(2).sum(1)
-        weights = self.model(torch.stack((diff_t, r2), dim=1))
-        return tg.nn.global_add_pool(weights * F.normalize(diff_pos, dim=1), batch)
+        weights = self.weighter(torch.stack((diff_t, r2), dim=1))
+        return utils.normalize(
+            tg.nn.global_add_pool(weights * utils.normalize(diff_pos), batch)
+        )
 
 
 def get_model(cfg, rng_seed=0):

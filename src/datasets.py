@@ -5,16 +5,12 @@ import hydra
 import omegaconf
 from omegaconf import OmegaConf
 import lightning.pytorch as pl
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch_geometric.transforms as T
 from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.loader import DataLoader
-import scvelo
 
-# torch.set_default_dtype(torch.float64)
+import utils
 
 
 class DatasetMerged(InMemoryDataset):
@@ -46,6 +42,7 @@ class Dataset(InMemoryDataset):
         t = torch.tensor(measurements['t'].to_numpy())
         pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
         vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
+        vel = utils.normalize(vel)
         data = Data(t=t, pos=pos, vel=vel)
 
         windows = torch.arange(data.t.numel()).unfold(0, self.num_neighbors + 1, 1)
