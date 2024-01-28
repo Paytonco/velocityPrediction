@@ -1,0 +1,7 @@
+defaults:
+  - Dataset
+  - Generated
+  - _self_
+
+name: MotifOscillation
+epsilon: .05

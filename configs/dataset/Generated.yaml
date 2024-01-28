@@ -1,0 +1,2 @@
+num_pnts: 4000
+processed_file_name: data__num_pnts_${.num_pnts}__poi_idx_${.poi_idx}__num_neighbors_${.num_neighbors}.pt

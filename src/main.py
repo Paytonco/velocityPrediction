@@ -18,11 +18,21 @@ class Runner(pl.LightningModule):
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
 def main(cfg):
+    if cfg.trainer.fit:
+        job_type = 'fit'
+    elif cfg.trainer.val:
+        job_type = 'val'
+    elif cfg.trainer.test:
+        job_type = 'test'
+    else:
+        raise ValueError('Trainer will not fit, val or test.')
+    if cfg.get('dataset') is None:
+        raise ValueError('No datasets selected. Select a dataset with "dataset@dataset.<name>=<dataset_cfg>".')
     wrun = wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
         dir=cfg.wandb.dir,
-        job_type='fit' if cfg.trainer.fit else 'pred'
+        job_type=job_type
     )
     with omegaconf.open_dict(cfg):
         cfg.out_dir = str(Path(cfg.out_dir).resolve())
@@ -35,8 +45,16 @@ def main(cfg):
         separator='|'
     ))
 
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+
     cbs = [
-        callbacks.ModelCheckpoint()
+        callbacks.ModelCheckpoint(
+            dirpath=cfg.run_dir,
+            filename='{epoch}',
+            save_last=True,
+            save_top_k=-1,
+            save_on_train_epoch_end=False,
+        )
     ]
 
     trainer = pl.Trainer(

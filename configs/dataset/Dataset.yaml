@@ -1,0 +1,7 @@
+defaults:
+  - sparsifier: TimeSkipByStep
+  - _self_
+
+poi_idx: 0
+num_neighbors: 10  # not inclusive of poi
+processed_file_name: data__poi_idx_${.poi_idx}__num_neighbors_${.num_neighbors}.pt
