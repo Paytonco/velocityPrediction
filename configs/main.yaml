@@ -5,6 +5,7 @@ hydra:
     dir: ${...out_dir}/hydra/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 defaults:
+  - model: First
   - _self_
 
 root_dir: /home/reepoi/GitHub/velocityPrediction
@@ -16,25 +17,14 @@ wandb:
   project: rna_vel_pred
   run: null
   dir: ${..out_dir}
-
-# dataset:
-#   name: Simple
-#   path: ${out_dir}/data/${dataset.name}/${dataset.name}.csv
-#   neighbors: slidingwindow
-#   num_neighbors: 4
-#   num_prev_neighbors: null
-#   neighbor_radius: .05
-#   batch_size: 2
-#   sparsity_step: 11
-#   pred_split: val
-# model: MLP
-# trainer:
-#   max_epochs: 100
-#   fit: true
-#   check_val_every_n_epoch: 1
-#   val: false
-#   pred: false
-#   ckpt: last
-#   logger: true
-#   devices: 1
-#   accelerator: gpu
+trainer:
+  max_epochs: 100
+  fit: true
+  check_val_every_n_epoch: 1
+  val: false
+  pred: false
+  ckpt: last
+  logger: true
+  devices: 1
+  accelerator: gpu
+  batch_size: 10

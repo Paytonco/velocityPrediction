@@ -5,6 +5,14 @@ from torch import Tensor
 import lightning.pytorch as pl
 
 
+class PlotCB(pl.callbacks.Callback):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self.log('train_loss', outputs['loss'], prog_bar=True, batch_size=batch.t.numel(), on_epoch=True)
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        self.log('val_loss', outputs, prog_bar=True, batch_size=batch.t.numel(), on_epoch=True)
+
+
 class ModelCheckpoint(pl.callbacks.ModelCheckpoint):
     @classmethod
     def _format_checkpoint_name(

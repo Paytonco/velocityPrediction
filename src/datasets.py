@@ -184,15 +184,24 @@ def get_dataset(cfg, data_dir, rng_seed=0):
         pl.seed_everything(rng_seed, workers=True)
         sparsifier = get_sparsifier(cfg.sparsifier)
         if cfg.name == 'MotifSimple':
-            return Simple(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            ds = Simple(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
         elif cfg.name == 'MotifOscillation':
-            return Oscillation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            ds = Oscillation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
         elif cfg.name == 'MotifBifurcation':
-            return Bifurcation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            ds = Bifurcation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
         elif cfg.name == 'Saved':
-            return Saved(cfg.path, cfg.processed_file_name, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            ds = Saved(cfg.path, cfg.processed_file_name, sparsifier, cfg.poi_idx, cfg.num_neighbors)
         else:
             raise ValueError(f'Unknown dataset: {cfg.name}')
+
+        train, val, test = split_train_val_test(list(range(len(ds))), train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test)
+        return ds[train], ds[val], ds[test]
+
+
+def split_train_val_test(idx, train_prec=.7, val_prec=.2, test_prec=.1):
+    split_idxs = (len(idx) * np.array([train_prec, 1 - val_prec - test_prec, 1 - test_prec])).astype(int)
+    train, _, val, test = np.split(idx, split_idxs)
+    return train, val, test
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
@@ -204,7 +213,7 @@ def main(cfg):
     if cfg.get('dataset') is None:
         raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
 
-    ds = DatasetMerged([get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()])
+    train, val, test = map(DatasetMerged, zip(*[get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
 
 
 if __name__ == "__main__":

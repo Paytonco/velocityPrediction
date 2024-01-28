@@ -4,16 +4,58 @@ import hydra
 import omegaconf
 from omegaconf import OmegaConf
 import flatten_json
+import torch
+import torch.nn.functional as F
 import lightning.pytorch as pl
+from torch_geometric.loader import DataLoader
 import wandb
 
 import callbacks
+import datasets
+import models
 
 
 class Runner(pl.LightningModule):
-    def __init__(self, cfg):
+    def __init__(self, cfg, model, dataloaders):
         super().__init__()
         self.cfg = cfg
+        self.model = model
+        self.dataloaders = dataloaders
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.model.parameters())
+
+    def loss(self, input, target):
+        return F.mse_loss(input, target)
+
+    def train_dataloader(self):
+        return self.dataloaders['train']
+
+    def val_dataloader(self):
+        return self.dataloaders['val']
+
+    def test_dataloader(self):
+        return self.dataloaders['test']
+
+    def training_step(self, batch, batch_idx):
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        loss = self.loss(out, batch.poi_vel)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        loss = self.loss(out, batch.poi_vel)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        loss = self.loss(out, batch.poi_vel)
+        return loss
+
+    def predict_step(self, batch, batch_idx):
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        loss = self.loss(out, batch.poi_vel)
+        return loss
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
@@ -37,17 +79,18 @@ def main(cfg):
     with omegaconf.open_dict(cfg):
         cfg.out_dir = str(Path(cfg.out_dir).resolve())
         cfg.run_dir = str(Path(cfg.out_dir)/'runs'/wrun.id)
+        # normalize dataset list in by sorting by name, then sorting by path
+        cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
+        cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
     Path(cfg.run_dir).mkdir(parents=True)
 
     logger = pl.loggers.WandbLogger(project=cfg.wandb.project, save_dir=cfg.run_dir)
-    logger.log_hyperparams(flatten_json.flatten_json(
-        OmegaConf.to_container(cfg, resolve=True),
-        separator='|'
-    ))
+    logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
 
     print(OmegaConf.to_yaml(cfg, resolve=True))
 
     cbs = [
+        callbacks.PlotCB(),
         callbacks.ModelCheckpoint(
             dirpath=cfg.run_dir,
             filename='{epoch}',
@@ -68,7 +111,17 @@ def main(cfg):
         deterministic=True
     )
 
-    runner = Runner(cfg)
+    splits = map(datasets.DatasetMerged, zip(*[
+        datasets.get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)
+        for v in cfg.dataset
+    ]))
+
+    dataloaders = {k: DataLoader(ds, batch_size=cfg.trainer.batch_size)
+                   for k, ds in zip(('train', 'val', 'test'), splits)}
+
+    model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
+
+    runner = Runner(cfg, model, dataloaders)
 
     ckpt_path = None
     if cfg.wandb.run and cfg.trainer.ckpt:
@@ -78,6 +131,8 @@ def main(cfg):
         trainer.fit(runner, ckpt_path=ckpt_path)
     if cfg.trainer.val:
         trainer.validate(runner, ckpt_path=ckpt_path)
+    if cfg.trainer.test:
+        trainer.test(runner, ckpt_path=ckpt_path)
     if cfg.trainer.pred:
         trainer.predict(runner, ckpt_path=ckpt_path)
 
