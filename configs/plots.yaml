@@ -1,1 +1,27 @@
-data_paths: []
+hydra:
+  run:
+    dir: ${...out_dir}/hydra/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: ${...out_dir}/hydra/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+defaults:
+  - _self_
+
+root_dir: /home/reepoi/GitHub/velocityPrediction
+out_dir: ${.root_dir}/../../out/rna_vel_pred
+plot_dir: ${.out_dir}/plots
+data_dir: ${.root_dir}/data
+rng_seed: 0
+wandb:
+  entity: taost
+  project: rna_vel_pred
+  dir: ${..out_dir}
+
+fmt: png
+
+run_ids: []
+plot:
+  context: poster
+  style: white
+  dataset:
+    do: true

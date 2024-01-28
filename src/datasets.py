@@ -190,7 +190,7 @@ def get_dataset(cfg, data_dir, rng_seed=0):
             ds = Saved(cfg.path, cfg.processed_file_name, sparsifier, cfg.poi_idx, cfg.num_neighbors)
         else:
             raise ValueError(f'Unknown dataset: {cfg.name}')
-
+        ds = ds.shuffle()
         train, val, test = split_train_val_test(list(range(len(ds))), train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test)
         return ds[train], ds[val], ds[test]
 

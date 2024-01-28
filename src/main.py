@@ -3,7 +3,6 @@ from pathlib import Path
 import hydra
 import omegaconf
 from omegaconf import OmegaConf
-import flatten_json
 import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -78,7 +77,7 @@ def main(cfg):
     )
     with omegaconf.open_dict(cfg):
         cfg.out_dir = str(Path(cfg.out_dir).resolve())
-        cfg.run_dir = str(Path(cfg.out_dir)/'runs'/wrun.id)
+        cfg.run_dir = str(Path(cfg.run_dir)/wrun.id)
         # normalize dataset list in by sorting by name, then sorting by path
         cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
         cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))

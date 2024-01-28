@@ -10,6 +10,7 @@ defaults:
 
 root_dir: /home/reepoi/GitHub/velocityPrediction
 out_dir: ${.root_dir}/../../out/rna_vel_pred
+run_dir: ${.out_dir}/runs
 data_dir: ${.root_dir}/data
 rng_seed: 0
 wandb:
@@ -20,7 +21,7 @@ wandb:
 trainer:
   max_epochs: 100
   fit: true
-  check_val_every_n_epoch: 1
+  check_val_every_n_epoch: 10
   val: false
   test: false
   pred: false
