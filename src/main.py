@@ -27,7 +27,7 @@ def main(cfg):
     else:
         raise ValueError('Trainer will not fit, val or test.')
     if cfg.get('dataset') is None:
-        raise ValueError('No datasets selected. Select a dataset with "dataset@dataset.<name>=<dataset_cfg>".')
+        raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
     wrun = wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,

@@ -194,7 +194,7 @@ def main(cfg):
     print(OmegaConf.to_yaml(cfg, resolve=True))
 
     if cfg.get('dataset') is None:
-        raise ValueError('No datasets selected. Select a dataset with "dataset@dataset.<name>=<dataset_cfg>".')
+        raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
 
     for k, v in cfg.dataset.items():
         ds = get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)
