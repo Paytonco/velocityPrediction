@@ -1,4 +1,5 @@
 from pathlib import Path
+import itertools
 
 import hydra
 import omegaconf
@@ -14,6 +15,13 @@ from torch_geometric.loader import DataLoader
 import scvelo
 
 # torch.set_default_dtype(torch.float64)
+
+
+class DatasetMerged(InMemoryDataset):
+    def __init__(self, datasets):
+        super().__init__(None)
+        data_list = list(itertools.chain.from_iterable(datasets))
+        self.data, self.slices = self.collate(data_list)
 
 
 class Dataset(InMemoryDataset):
@@ -196,8 +204,7 @@ def main(cfg):
     if cfg.get('dataset') is None:
         raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
 
-    for k, v in cfg.dataset.items():
-        ds = get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)
+    ds = DatasetMerged([get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()])
 
 
 if __name__ == "__main__":
