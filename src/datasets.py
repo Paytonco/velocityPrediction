@@ -13,6 +13,9 @@ from torch_geometric.data import Data, InMemoryDataset
 import utils
 
 
+torch.set_default_dtype(torch.float64)
+
+
 class DatasetMerged(InMemoryDataset):
     def __init__(self, datasets):
         super().__init__(None)

@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import InMemoryDataset
 import wandb
 
 import callbacks
@@ -15,11 +16,11 @@ import models
 
 
 class Runner(pl.LightningModule):
-    def __init__(self, cfg, model, dataloaders):
+    def __init__(self, cfg, model, splits):
         super().__init__()
         self.cfg = cfg
         self.model = model
-        self.dataloaders = dataloaders
+        self.splits = splits
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.model.parameters())
@@ -28,13 +29,21 @@ class Runner(pl.LightningModule):
         return F.mse_loss(input, target)
 
     def train_dataloader(self):
-        return self.dataloaders['train']
+        ds = self.splits['train']
+        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
 
     def val_dataloader(self):
-        return self.dataloaders['val']
+        ds = self.splits['val']
+        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
 
     def test_dataloader(self):
-        return self.dataloaders['test']
+        ds = self.splits['test']
+        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader([
+            (s, next(iter(DataLoader(ds, batch_size=len(ds))))) for s, ds in self.splits.items()
+        ], collate_fn=lambda x: x[0])
 
     def training_step(self, batch, batch_idx):
         out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
@@ -51,10 +60,15 @@ class Runner(pl.LightningModule):
         loss = self.loss(out, batch.poi_vel)
         return loss
 
-    def predict_step(self, batch, batch_idx):
+    def predict_step(self, split_data, batch_idx):
+        split, batch = split_data
         out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
-        loss = self.loss(out, batch.poi_vel)
-        return loss
+        batch.poi_vel_pred = out
+        batch._slice_dict['poi_vel_pred'] = batch._slice_dict['poi_vel']
+        batch._inc_dict['poi_vel_pred'] = batch._inc_dict['poi_vel']
+        ds = InMemoryDataset(None)
+        ds.save(batch.cpu().to_data_list(), f'{self.cfg.run_dir}/pred_{split}.pt')
+        return True
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
@@ -65,6 +79,8 @@ def main(cfg):
         job_type = 'val'
     elif cfg.trainer.test:
         job_type = 'test'
+    elif cfg.trainer.pred:
+        job_type = 'pred'
     else:
         raise ValueError('Trainer will not fit, val or test.')
     if cfg.get('dataset') is None:
@@ -114,13 +130,11 @@ def main(cfg):
         datasets.get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)
         for v in cfg.dataset
     ]))
-
-    dataloaders = {k: DataLoader(ds.shuffle(), batch_size=cfg.trainer.batch_size)
-                   for k, ds in zip(('train', 'val', 'test'), splits)}
+    splits = {k: s.shuffle() for k, s in zip(('train', 'val', 'test'), splits)}
 
     model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
 
-    runner = Runner(cfg, model, dataloaders)
+    runner = Runner(cfg, model, splits)
 
     ckpt_path = None
     if cfg.wandb.run and cfg.trainer.ckpt:

@@ -24,4 +24,6 @@ plot:
   context: poster
   style: white
   dataset:
-    do: true
+    do: false
+  vel_pred:
+    do: false
