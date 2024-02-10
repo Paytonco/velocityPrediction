@@ -32,7 +32,8 @@ class Dataset(InMemoryDataset):
         self.poi_idx = poi_idx
         self.num_neighbors = num_neighbors
         super().__init__(root, transform, pre_transform, pre_filter)
-        self.load(self.processed_paths[0])
+        self.process()
+        # self.load(self.processed_paths[0])
 
     @property
     def processed_file_names(self):
@@ -67,7 +68,8 @@ class Dataset(InMemoryDataset):
             neighborhood.poi_vel = data.vel[idx]
             data_list.append(neighborhood)
 
-        self.save(data_list, self.processed_paths[0])
+        self.data, self.slices = self.collate(data_list)
+        # self.save(data_list, self.processed_paths[0])
 
 
 class Motif(Dataset):

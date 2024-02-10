@@ -5,6 +5,7 @@ import omegaconf
 from omegaconf import OmegaConf
 import pandas as pd
 import torch
+import torch.nn.functional as F
 import torch_geometric as tg
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import InMemoryDataset
@@ -95,6 +96,58 @@ class VelPred(Plotter):
         plt.close(fig)
 
 
+class MSESparseStep(Plotter):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.mse_tuples = []
+
+    def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_cfg = run_cfg
+
+    def iter_split(self, split, ds):
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        self.mse_tuples.append((split, self.run_cfg.dataset[0].sparsifier.step, mse.item()))
+
+    def end_iter_run(self):
+        df = pd.DataFrame(self.mse_tuples, columns=['split', 'sparsifier_step', 'mse'])
+        for s in df['split'].unique():
+            fig, ax = plt.subplots()
+            sns.lineplot(
+                df[df['split'] == s],
+                x='sparsifier_num_neighbors', y='mse',
+                err_style='bars',
+                ax=ax,
+            )
+            fig.savefig(f'{self.cfg.plot_dir}/mse_sparsifier_step_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
+
+
+class MSENeighborSet(Plotter):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.mse_tuples = []
+
+    def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_cfg = run_cfg
+
+    def iter_split(self, split, ds):
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        self.mse_tuples.append((split, self.run_cfg.dataset[0].num_neighbors, mse.item()))
+
+    def end_iter_run(self):
+        df = pd.DataFrame(self.mse_tuples, columns=['split', 'num_neighbors', 'mse'])
+        for s in df['split'].unique():
+            fig, ax = plt.subplots()
+            sns.lineplot(
+                df[df['split'] == s],
+                x='num_neighbors', y='mse',
+                err_style='bars',
+                ax=ax,
+            )
+            fig.savefig(f'{self.cfg.plot_dir}/mse_neighbor_set_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
+
+
 @hydra.main(version_base=None, config_path='../configs', config_name='plots')
 def main(cfg):
     sns.set_context(cfg.plot.context)
@@ -117,6 +170,10 @@ def main(cfg):
     plotters = []
     if cfg.plot.vel_pred.do:
         plotters.append(VelPred(cfg))
+    if cfg.plot.mse.neighbor_set.do:
+        plotters.append(MSENeighborSet(cfg))
+    if cfg.plot.mse.sparsifier.step.do:
+        plotters.append(MSESparseStep(cfg))
 
     iter_runs(cfg, plotters)
 
