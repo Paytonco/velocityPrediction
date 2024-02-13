@@ -19,6 +19,8 @@ wandb:
   run: null
   dir: ${..out_dir}
 trainer:
+  copy_saved_cfg:
+    - dataset
   max_epochs: 100
   fit: true
   check_val_every_n_epoch: 10

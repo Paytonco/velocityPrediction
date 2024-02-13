@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 
 import hydra
@@ -13,6 +14,7 @@ import wandb
 import callbacks
 import datasets
 import models
+import wandbruns
 
 
 class Runner(pl.LightningModule):
@@ -71,8 +73,14 @@ class Runner(pl.LightningModule):
         return True
 
 
+def cfg_normalize_dataset(cfg):
+    cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
+    cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
+
+
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
 def main(cfg):
+    torch.set_default_dtype(torch.float64)  # must put here when calling main in a loop
     if cfg.trainer.fit:
         job_type = 'fit'
     elif cfg.trainer.val:
@@ -83,8 +91,6 @@ def main(cfg):
         job_type = 'pred'
     else:
         raise ValueError('Trainer will not fit, val or test.')
-    if cfg.get('dataset') is None:
-        raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
     wrun = wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
@@ -94,9 +100,23 @@ def main(cfg):
     with omegaconf.open_dict(cfg):
         cfg.out_dir = str(Path(cfg.out_dir).resolve())
         cfg.run_dir = str(Path(cfg.run_dir)/wrun.id)
+        if cfg.wandb.run is not None and len(cfg.trainer.copy_saved_cfg):
+            run_saved_cfg = OmegaConf.create(wandbruns.query_runs(cfg.wandb.entity, cfg.wandb.project, {'name': cfg.wandb.run}, {}, {})[0].config)
+            for k in cfg.trainer.copy_saved_cfg:
+                cfg[k] = run_saved_cfg[k]
+        else:
+            if cfg.get('dataset') is None:
+                raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
+            cfg_normalize_dataset(cfg)
+        dataset_summary = defaultdict(list)
+        for ds in cfg.dataset:
+            dataset_summary['name'].append(ds.name)
+            dataset_summary['num_neighbors'].append(ds.num_neighbors)
+            dataset_summary['sparsifier_TimeSkipByStep_step'].append(ds.sparsifier.step)
+        cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}
         # normalize dataset list in by sorting by name, then sorting by path
-        cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
-        cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
+        # cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
+        # cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
     Path(cfg.run_dir).mkdir(parents=True)
 
     logger = pl.loggers.WandbLogger(project=cfg.wandb.project, save_dir=cfg.run_dir)
@@ -152,6 +172,7 @@ def main(cfg):
     wandb.finish()
     print('WandB Run ID')
     print(wrun.id)
+    return wrun.id
 
 
 if __name__ == '__main__':
