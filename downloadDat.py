@@ -17,8 +17,8 @@ DATASETS = [
     # scv.datasets.pancreas,
     # scv.datasets.dentategyrus,
     # scv.datasets.dentategyrus_lamanno,
-    scv.datasets.forebrain,
-    # scv.datasets.gastrulation,
+    # scv.datasets.forebrain,
+    # scv.datasets.gastrulation,  # too much memory
     # scv.datasets.bonemarrow,
     # scv.datasets.pbmc68k,
 ]
@@ -41,6 +41,13 @@ scv.datasets.forebrain
 
 2. run scv.pp.remove_duplicate_cells and scv.pp.neighbors before filter_and_normalize
 3. run scv.tl.umap befor scv.tl.velocity_embedding
+
+or replace step 1. with pytables manipulation:
+    import tables
+    f = tables.open_file('data/forebrain/forebrain.h5ad', mode='r+')
+    f.rename_node('/row_attrs', '/obs')
+    f.rename_node('/col_attrs', '/var')
+    f.rename_node('/matrix', '/X')
 """
 
 
