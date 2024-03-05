@@ -12,14 +12,15 @@ from torch_geometric.data import InMemoryDataset
 from tqdm import tqdm
 import seaborn as sns
 import wandb
+import matplotlib
 import matplotlib.pyplot as plt
 
 import datasets
-import runs
+import wandbruns
 
 
 def get_runs(cfg):
-    rs = runs.query_runs(cfg.wandb.entity, cfg.wandb.project,
+    rs = wandbruns.query_runs(cfg.wandb.entity, cfg.wandb.project,
                          {'$or': [{'name': i} for i in cfg.run_ids]}, {}, {})
     for r in rs:
         run_cfg = OmegaConf.create(r.config)
@@ -58,11 +59,16 @@ def iter_runs(cfg, plotters):
 
 def plot_field(ax, data):
     pos, vel = data.poi_pos, data.poi_vel
-    ax.scatter(pos[:, 0], pos[:, 1], label='State', c='orange')
-    ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='deepskyblue')
+    sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=data.poi_t)# c='orange')
+    ax.get_figure().colorbar(sc, ax=ax)
     if hasattr(data, 'poi_vel_pred'):
-        vel_pred = data.poi_vel_pred
-        ax.quiver(pos[:, 0], pos[:, 1], vel_pred[:, 0], vel[:, 1], color='blue')
+        cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['deepskyblue', 'blue'])
+        pos2 = torch.cat((pos, pos))
+        indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
+        vel_pred = torch.cat((vel, data.poi_vel_pred))
+        ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator))
+    else:
+        ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='deepskyblue')
     ax.set_xlabel('$x$')
     ax.set_ylabel('$y$')
 
@@ -115,7 +121,7 @@ class MSESparseStep(Plotter):
             fig, ax = plt.subplots()
             sns.lineplot(
                 df[df['split'] == s],
-                x='sparsifier_num_neighbors', y='mse',
+                x='sparsifier_step', y='mse',
                 err_style='bars',
                 ax=ax,
             )
