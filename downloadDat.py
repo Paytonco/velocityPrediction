@@ -40,7 +40,7 @@ scv.datasets.forebrain
           _clean_uns(adata)
 
 2. run scv.pp.remove_duplicate_cells and scv.pp.neighbors before filter_and_normalize
-3. run scv.tl.umap befor scv.tl.velocity_embedding
+3. run scv.tl.umap before scv.tl.velocity_embedding
 
 or replace step 1. with pytables manipulation:
     import tables
@@ -48,6 +48,12 @@ or replace step 1. with pytables manipulation:
     f.rename_node('/row_attrs', '/obs')
     f.rename_node('/col_attrs', '/var')
     f.rename_node('/matrix', '/X')
+"""
+
+"""
+scv.datasets.bonemarrow
+
+3. run scv.tl.umap before scv.tl.velocity_embedding
 """
 
 
@@ -74,7 +80,7 @@ def get_csvs(ds_func, basis_dim=2):
     scv.tl.velocity_graph(adata)
     scv.tl.velocity_pseudotime(adata)
 
-    # scv.tl.umap(adata)  # for forebrain
+    # scv.tl.umap(adata)  # for forebrain and bonemarrow
     scv.tl.velocity_embedding(adata, basis='umap')
 
     pseudotime = adata.obs.velocity_pseudotime
