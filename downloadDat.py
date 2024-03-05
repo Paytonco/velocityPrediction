@@ -20,7 +20,7 @@ DATASETS = [
     # scv.datasets.forebrain,
     # scv.datasets.gastrulation,  # too much memory
     # scv.datasets.bonemarrow,
-    # scv.datasets.pbmc68k,
+    scv.datasets.pbmc68k,
 ]
 
 """
@@ -56,6 +56,11 @@ scv.datasets.bonemarrow
 3. run scv.tl.umap before scv.tl.velocity_embedding
 """
 
+"""
+scv.datasets.pbmc68k
+
+3. run scv.tl.umap before scv.tl.velocity_embedding
+"""
 
 
 def get_csvs(ds_func, basis_dim=2):
@@ -80,7 +85,7 @@ def get_csvs(ds_func, basis_dim=2):
     scv.tl.velocity_graph(adata)
     scv.tl.velocity_pseudotime(adata)
 
-    # scv.tl.umap(adata)  # for forebrain and bonemarrow
+    scv.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
     scv.tl.velocity_embedding(adata, basis='umap')
 
     pseudotime = adata.obs.velocity_pseudotime
