@@ -43,7 +43,6 @@ class Dataset(InMemoryDataset):
 
 def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
-    measurements = measurements.iloc[:len(measurements) // num_neighbors * num_neighbors]
     t = torch.tensor(measurements['t'].to_numpy())
     pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
     vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
