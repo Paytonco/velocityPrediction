@@ -111,6 +111,7 @@ def main(cfg):
         dataset_summary = defaultdict(list)
         for ds in cfg.dataset:
             dataset_summary['name'].append(ds.name)
+            dataset_summary['path'].append(ds.get('path', ''))
             dataset_summary['num_neighbors'].append(ds.num_neighbors)
             dataset_summary['sparsifier_TimeSkipByStep_step'].append(ds.sparsifier.step)
         cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}

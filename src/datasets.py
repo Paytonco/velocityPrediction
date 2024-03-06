@@ -8,6 +8,7 @@ import lightning.pytorch as pl
 import numpy as np
 import pandas as pd
 import torch
+import torch_geometric as tg
 from torch_geometric.data import Data, InMemoryDataset
 
 import utils
@@ -17,148 +18,144 @@ torch.set_default_dtype(torch.float64)
 
 
 class DatasetMerged(InMemoryDataset):
-    def __init__(self, datasets):
+    def __init__(self, data_lists):
         super().__init__(None)
-        data_list = list(itertools.chain.from_iterable(datasets))
+        data_list = list(itertools.chain.from_iterable(data_lists))
         self.data, self.slices = self.collate(data_list)
 
 
-class Dataset(InMemoryDataset):
-    def __init__(self, root, processed_file_name,
-                 sparsifier, poi_idx, num_neighbors,
-                 transform=None, pre_transform=None, pre_filter=None):
-        self.processed_file_name = processed_file_name
-        self.sparsifier = sparsifier
-        self.poi_idx = poi_idx
-        self.num_neighbors = num_neighbors
-        super().__init__(root, transform, pre_transform, pre_filter)
-        self.process()
-        # self.load(self.processed_paths[0])
+def process_measurements2(measurements, sparsifier, num_neighbors, poi_idx):
+    measurements = measurements.sort_values('t', ignore_index=True)
+    t = torch.tensor(measurements['t'].to_numpy())
+    pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
+    vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
+    vel = utils.normalize(vel)
+    data = Data(t=t, pos=pos, vel=vel)
 
-    @property
-    def processed_file_names(self):
-        return [self.processed_file_name]
+    # sparsify
+    step = sparsifier.step
+    node_i = torch.arange(data.num_nodes).view(-1, step).T
+    node_i = [node_i.roll(-i, 1) for i in range(node_i.size(1))]
+    node_i = torch.cat(node_i)
+    node_j = node_i[:, [0]].broadcast_to(node_i.size())
+    # node_i, node_j = node_i[:, 1:], node_j[:, 1:]  # remove self-loops
+    # keep self-loops
+    data.edge_index = torch.stack((node_i.reshape(-1), node_j.reshape(-1)))
 
-    def process(self):
-        measurements = self.get_measurements()
-        measurements = measurements.sort_values('t', ignore_index=True)
-        measurements = self.sparsifier(measurements)
-        t = torch.tensor(measurements['t'].to_numpy())
-        pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
-        vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
-        vel = utils.normalize(vel)
-        data = Data(t=t, pos=pos, vel=vel)
+    # split into data list
+    data_list = []
+    for i in range(data.num_nodes):
+        idx = slice(0, 1)  # -> [0:1]
+        neighborhood = data.subgraph(node_i[node_j == i])
+        assert (data.pos[i] == neighborhood.pos[0]).all()
+        assert (data.vel[i] == neighborhood.vel[0]).all()
+        assert (data.t[i] == neighborhood.t[0]).all()
+        neighborhood.poi_t = neighborhood.t[idx]
+        neighborhood.poi_pos = neighborhood.pos[idx]
+        neighborhood.poi_vel = neighborhood.vel[idx]
+        edge_index_num_neighbors = tg.nn.knn_graph(neighborhood.t, num_neighbors)
+        neighbor_i, neighbor_j = edge_index_num_neighbors
+        neighborhood = neighborhood.subgraph(neighbor_i[neighbor_j == 0])
+        data_list.append(neighborhood)
 
-        windows = torch.arange(data.t.numel()).unfold(0, self.num_neighbors + 1, 1)
-        mask_poi = torch.zeros(self.num_neighbors + 1, dtype=bool)
-        mask_poi[self.num_neighbors // 2 + self.poi_idx] = True
-        node_i = windows[:, mask_poi].squeeze().repeat_interleave(self.num_neighbors)
-        node_j = windows[:, ~mask_poi].ravel()
-        data.edge_index = torch.stack((node_j, node_i))
-        # points near the time interval boundary have no neighbors
-        data = data.subgraph(node_j)
-
-        node_j, node_i = data.edge_index
-        data_list = []
-        for i in torch.unique(node_i):
-            idx = slice(i, i+1)  # -> [i:i+1]
-            neighborhood = data.subgraph(node_j[node_i == i])
-            neighborhood.poi_t = data.t[idx]
-            neighborhood.poi_pos = data.pos[idx]
-            neighborhood.poi_vel = data.vel[idx]
-            data_list.append(neighborhood)
-
-        self.data, self.slices = self.collate(data_list)
-        # self.save(data_list, self.processed_paths[0])
+    return data_list
 
 
-class Motif(Dataset):
-    def __init__(self, root, processed_file_name,
-                 num_pnts, epsilon, sparsifier, poi_idx, num_neighbors,
-                 transform=None, pre_transform=None, pre_filter=None):
-        self.num_pnts = num_pnts
-        self.epsilon = epsilon
-        super().__init__(root, processed_file_name,
-                         sparsifier, poi_idx, num_neighbors,
-                         transform, pre_transform, pre_filter)
+def process_measurements(measurements, sparsifier, num_neighbors, poi_idx):
+    measurements = measurements.sort_values('t', ignore_index=True)
+    measurements = sparsifier(measurements)
+    t = torch.tensor(measurements['t'].to_numpy())
+    pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
+    vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
+    vel = utils.normalize(vel)
+    data = Data(t=t, pos=pos, vel=vel)
 
-    def get_measurements(self):
-        t, pos, vel = self.generate_measurements()
-        return pd.DataFrame(
-            torch.cat((t[:, None], pos, vel), axis=1),
-            columns=['t', 'x1', 'x2', 'v1', 'v2']
-        )
+    windows = torch.arange(data.t.numel()).unfold(0, num_neighbors + 1, 1)
+    mask_poi = torch.zeros(num_neighbors + 1, dtype=bool)
+    mask_poi[num_neighbors // 2 + poi_idx] = True
+    node_i = windows[:, mask_poi].squeeze().repeat_interleave(num_neighbors)
+    node_j = windows[:, ~mask_poi].ravel()
+    data.edge_index = torch.stack((node_j, node_i))
+    # points near the time interval boundary have no neighbors
+    data = data.subgraph(node_j)
 
-    def generate_measurements(self):
-        raise NotImplementedError()
+    node_j, node_i = data.edge_index
+    data_list = []
+    for i in torch.unique(node_i):
+        idx = slice(i, i+1)  # -> [i:i+1]
+        neighborhood = data.subgraph(node_j[node_i == i])
+        neighborhood.poi_t = data.t[idx]
+        neighborhood.poi_pos = data.pos[idx]
+        neighborhood.poi_vel = data.vel[idx]
+        data_list.append(neighborhood)
 
-
-class Simple(Motif):
-    def generate_measurements(self):
-        pos0 = torch.zeros(self.num_pnts, 2)
-        pos0[:, 1] = self.epsilon * torch.rand(self.num_pnts)
-        pos = pos0.clone()
-        t = 3 * torch.rand(self.num_pnts)
-        pos[:, 0] = t
-        pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
-
-        vel = torch.stack((
-            torch.ones(pos.size(0)),
-            .2 * pos[:, 0] * (pos[:, 1] - 1)
-        )).T
-
-        return t, pos, vel
+    return data_list
 
 
-class Oscillation(Motif):
-    def generate_measurements(self):
-        pos0 = torch.zeros(self.num_pnts, 2)
-        pos0[:, 0] = 1 + self.epsilon * (2 * torch.rand(self.num_pnts) - 1)
-        pos = pos0.clone()
-        t = 2 * np.pi * torch.rand(self.num_pnts)
-        pos[:, 0] = pos0[:, 0] * torch.cos(t) + pos0[:, 1] * torch.sin(t)
-        pos[:, 1] = -pos0[:, 0] * torch.sin(t) + pos0[:, 1] * torch.cos(t)
+def generate_measurements_simple(num_pnts, epsilon):
+    pos0 = torch.zeros(num_pnts, 2)
+    pos0[:, 1] = epsilon * torch.rand(num_pnts)
+    pos = pos0.clone()
+    t = 3 * torch.rand(num_pnts)
+    pos[:, 0] = t
+    pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
 
-        vel = torch.stack((pos[:, 1], -pos[:, 0])).T
+    vel = torch.stack((
+        torch.ones(pos.size(0)),
+        .2 * pos[:, 0] * (pos[:, 1] - 1)
+    )).T
 
-        return t, pos, vel
-
-
-class Bifurcation(Motif):
-    def generate_measurements(self):
-        pos0 = torch.zeros(self.num_pnts, 2)
-        branch = 2 * torch.bernoulli(.5 * torch.ones(self.num_pnts)) - 1
-        pos0[:, 1] = 1 + self.epsilon * (.5 * torch.rand(self.num_pnts) + .5) * branch
-        pos = pos0.clone()
-
-        t = 6 * torch.rand(self.num_pnts)
-
-        pos[:, 0] = t
-        pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
-
-        vel = torch.stack((
-            torch.ones(pos.size(0)),
-            .2 * pos[:, 0] * (pos[:, 1] - 1)
-        )).T
-
-        return t, pos, vel
+    return pd.DataFrame(
+        torch.cat((t[:, None], pos, vel), axis=1),
+        columns=['t', 'x1', 'x2', 'v1', 'v2']
+    )
 
 
-class Saved(Dataset):
-    def __init__(self, data_path, processed_file_name,
-                 sparsifier, poi_idx, num_neighbors,
-                 transform=None, pre_transform=None, pre_filter=None):
-        self.data_path = Path(data_path)
-        super().__init__(self.data_path.parent, processed_file_name,
-                         sparsifier, poi_idx, num_neighbors,
-                         transform, pre_transform, pre_filter)
+def generate_measurements_oscillation(num_pnts, epsilon):
+    pos0 = torch.zeros(num_pnts, 2)
+    pos0[:, 0] = 1 + epsilon * (2 * torch.rand(num_pnts) - 1)
+    pos = pos0.clone()
+    t = 2 * np.pi * torch.rand(num_pnts)
+    pos[:, 0] = pos0[:, 0] * torch.cos(t) + pos0[:, 1] * torch.sin(t)
+    pos[:, 1] = -pos0[:, 0] * torch.sin(t) + pos0[:, 1] * torch.cos(t)
 
-    @property
-    def raw_file_names(self):
-        return [self.data_path]
+    vel = torch.stack((pos[:, 1], -pos[:, 0])).T
 
-    def get_measurements(self):
-        return pd.read_csv(self.data_path)
+    return pd.DataFrame(
+        torch.cat((t[:, None], pos, vel), axis=1),
+        columns=['t', 'x1', 'x2', 'v1', 'v2']
+    )
+
+
+def generate_measurements_bifurcation(num_pnts, epsilon):
+    pos0 = torch.zeros(num_pnts, 2)
+    branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
+    pos0[:, 1] = 1 + epsilon * (.5 * torch.rand(num_pnts) + .5) * branch
+    pos = pos0.clone()
+
+    t = 6 * torch.rand(num_pnts)
+
+    pos[:, 0] = t
+    pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
+
+    vel = torch.stack((
+        torch.ones(pos.size(0)),
+        .2 * pos[:, 0] * (pos[:, 1] - 1)
+    )).T
+
+    return pd.DataFrame(
+        torch.cat((t[:, None], pos, vel), axis=1),
+        columns=['t', 'x1', 'x2', 'v1', 'v2']
+    )
+
+
+def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
+    rng = np.random.default_rng(seed=rng_seed)
+    idx = rng.permutation(len(df))
+    split_idxs = (len(idx) * np.array([train_prec, 1 - val_prec - test_prec, 1 - test_prec])).astype(int)
+    train, _, val, test = np.split(idx, split_idxs)
+
+    return df.iloc[train], df.iloc[val], df.iloc[test]
 
 
 class Sparsifier:
@@ -186,24 +183,19 @@ def get_dataset(cfg, data_dir, rng_seed=0):
         pl.seed_everything(rng_seed, workers=True)
         sparsifier = get_sparsifier(cfg.sparsifier)
         if cfg.name == 'MotifSimple':
-            ds = Simple(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'MotifOscillation':
-            ds = Oscillation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'MotifBifurcation':
-            ds = Bifurcation(f'{data_dir}/{cfg.name}', cfg.processed_file_name, cfg.num_pnts, cfg.epsilon, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'Saved':
-            ds = Saved(cfg.path, cfg.processed_file_name, sparsifier, cfg.poi_idx, cfg.num_neighbors)
+            df = pd.read_csv(cfg.path)
         else:
             raise ValueError(f'Unknown dataset: {cfg.name}')
-        ds = ds.shuffle()
-        train, val, test = split_train_val_test(list(range(len(ds))), train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test)
-        return ds[train], ds[val], ds[test]
+        splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
+        splits = [process_measurements2(s, sparsifier, cfg.num_neighbors, cfg.poi_idx) for s in splits]
 
-
-def split_train_val_test(idx, train_prec=.7, val_prec=.2, test_prec=.1):
-    split_idxs = (len(idx) * np.array([train_prec, 1 - val_prec - test_prec, 1 - test_prec])).astype(int)
-    train, _, val, test = np.split(idx, split_idxs)
-    return train, val, test
+        return splits
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')
