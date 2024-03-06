@@ -24,8 +24,26 @@ class DatasetMerged(InMemoryDataset):
         self.data, self.slices = self.collate(data_list)
 
 
-def process_measurements2(measurements, sparsifier, num_neighbors, poi_idx):
+class Dataset(InMemoryDataset):
+    def __init__(self, cfg, df, split):
+        self.cfg = cfg
+        self.df = df
+        self.split = split
+        super().__init__(cfg.data_dir)
+        self.load(self.processed_paths[0])
+
+    def processed_file_names(self):
+        return [f'{self.cfg.processed_file_name}__split_{self.split}.pt']
+
+    def process(self):
+        data_list = process_measurements2(self.df, self.cfg.sparsify_step_time, self.cfg.num_neighbors, 0)
+
+        self.save(data_list, self.processed_paths[0])
+
+
+def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
+    measurements = measurements.iloc[:len(measurements) // num_neighbors * num_neighbors]
     t = torch.tensor(measurements['t'].to_numpy())
     pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
     vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
@@ -33,8 +51,7 @@ def process_measurements2(measurements, sparsifier, num_neighbors, poi_idx):
     data = Data(t=t, pos=pos, vel=vel)
 
     # sparsify
-    step = sparsifier.step
-    node_i = torch.arange(data.num_nodes).view(-1, step).T
+    node_i = torch.arange(data.num_nodes).view(-1, sparsify_step_time).T
     node_i = [node_i.roll(-i, 1) for i in range(node_i.size(1))]
     node_i = torch.cat(node_i)
     node_j = node_i[:, [0]].broadcast_to(node_i.size())
@@ -158,30 +175,9 @@ def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
     return df.iloc[train], df.iloc[val], df.iloc[test]
 
 
-class Sparsifier:
-    def __call__(self, measurements):
-        raise NotImplementedError()
-
-
-class TimeSkipByStep(Sparsifier):
-    def __init__(self, step):
-        self.step = step
-
-    def __call__(self, measurements):
-        return measurements.iloc[::self.step]
-
-
-def get_sparsifier(cfg):
-    if cfg.name == 'TimeSkipByStep':
-        return TimeSkipByStep(cfg.step)
-    else:
-        raise ValueError(f'Unknown sparsifier: {cfg.name}')
-
-
-def get_dataset(cfg, data_dir, rng_seed=0):
+def get_dataset(cfg, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
-        sparsifier = get_sparsifier(cfg.sparsifier)
         if cfg.name == 'MotifSimple':
             df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'MotifOscillation':
@@ -189,11 +185,12 @@ def get_dataset(cfg, data_dir, rng_seed=0):
         elif cfg.name == 'MotifBifurcation':
             df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'Saved':
-            df = pd.read_csv(cfg.path)
+            data_dir = Path(cfg.data_dir)
+            df = pd.read_csv(data_dir/f'{data_dir.stem}.csv')
         else:
             raise ValueError(f'Unknown dataset: {cfg.name}')
         splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
-        splits = [process_measurements2(s, sparsifier, cfg.num_neighbors, cfg.poi_idx) for s in splits]
+        splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
 
         return splits
 
@@ -207,7 +204,7 @@ def main(cfg):
     if cfg.get('dataset') is None:
         raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
 
-    train, val, test = map(DatasetMerged, zip(*[get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
+    train, val, test = map(DatasetMerged, zip(*[get_dataset(v, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
 
 
 if __name__ == "__main__":

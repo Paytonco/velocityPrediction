@@ -3,4 +3,5 @@ defaults:
   - _self_
 
 name: Saved
-path: ???
+data_dir: ???
+processed_file_name: sparsify_step_time_${.sparsify_step_time}__num_neighbors_${.num_neighbors}
