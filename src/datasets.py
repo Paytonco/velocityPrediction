@@ -50,32 +50,54 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
     vel = utils.normalize(vel)
     data = Data(t=t, pos=pos, vel=vel)
 
-    # sparsify
-    node_i = torch.arange(data.num_nodes).view(-1, sparsify_step_time).T
-    node_i = [node_i.roll(-i, 1) for i in range(node_i.size(1))]
-    node_i = torch.cat(node_i)
-    node_j = node_i[:, [0]].broadcast_to(node_i.size())
-    # node_i, node_j = node_i[:, 1:], node_j[:, 1:]  # remove self-loops
-    # keep self-loops
-    data.edge_index = torch.stack((node_i.reshape(-1), node_j.reshape(-1)))
-
-    # split into data list
-    data_list = []
+    labels = torch.arange(data.num_nodes, dtype=torch.long)
+    edge_index_nodes = []
     for i in range(data.num_nodes):
-        idx = slice(0, 1)  # -> [0:1]
-        neighborhood = data.subgraph(node_i[node_j == i])
-        assert (data.pos[i] == neighborhood.pos[0]).all()
-        assert (data.vel[i] == neighborhood.vel[0]).all()
-        assert (data.t[i] == neighborhood.t[0]).all()
-        neighborhood.poi_t = neighborhood.t[idx]
-        neighborhood.poi_pos = neighborhood.pos[idx]
-        neighborhood.poi_vel = neighborhood.vel[idx]
-        edge_index_num_neighbors = tg.nn.knn_graph(neighborhood.t, num_neighbors)
-        neighbor_i, neighbor_j = edge_index_num_neighbors
-        neighborhood = neighborhood.subgraph(neighbor_i[neighbor_j == 0])
+        node_i = labels.roll(-i)[::sparsify_step_time]
+        node_j = torch.full(node_i.size(), i)
+        edge_index_nodes.append(torch.stack((node_i, node_j)))
+    # keep self-loops
+    data.edge_index = torch.cat(edge_index_nodes, dim=1)
+    data_keys = ('pos', 'vel', 't')
+    data_values = zip(*(
+        tg.utils.unbatch(data[k][data.edge_index[0]], data.edge_index[1])
+        for k in data_keys
+    ))
+    data_list = []
+    for i, (pos, vel, t) in enumerate(data_values):
+        assert (data.pos[i] == pos[0]).all(), i
+        assert (data.vel[i] == vel[0]).all(), i
+        assert (data.t[i] == t[0]).all(), i
+        neighborhood = Data(poi_pos=pos[[0]], poi_vel=vel[[0]], poi_t=t[[0]])
+        edge_index_num_neighbors = tg.nn.knn_graph(t, num_neighbors)
+        poi_neighbors = edge_index_num_neighbors[0][edge_index_num_neighbors[1] == 0]
+        neighborhood.pos = pos[poi_neighbors]
+        neighborhood.vel = vel[poi_neighbors]
+        neighborhood.t = t[poi_neighbors]
         data_list.append(neighborhood)
 
     return data_list
+
+    # split into data list
+    # data_list = []
+    # for i in range(data.num_nodes):
+    #     idx = slice(0, 1)  # -> [0:1]
+    #     neighborhood = data.subgraph(data.edge_index[0][data.edge_index[1] == i])
+    #     neighborhood.edge_index = None
+    #     assert (data.pos[i] == neighborhood.pos[0]).all()
+    #     assert (data.vel[i] == neighborhood.vel[0]).all()
+    #     assert (data.t[i] == neighborhood.t[0]).all()
+    #     neighborhood.poi_t = neighborhood.t[idx]
+    #     neighborhood.poi_pos = neighborhood.pos[idx]
+    #     neighborhood.poi_vel = neighborhood.vel[idx]
+    #     edge_index_num_neighbors = tg.nn.knn_graph(neighborhood.t, num_neighbors)
+    #     neighbor_i, neighbor_j = edge_index_num_neighbors
+    #     neighborhood = neighborhood.subgraph(neighbor_i[neighbor_j == 0])
+    #     neighborhood.edge_index = None
+    #     data_list.append(neighborhood)
+    # breakpoint()
+
+    # return data_list
 
 
 def process_measurements(measurements, sparsifier, num_neighbors, poi_idx):
