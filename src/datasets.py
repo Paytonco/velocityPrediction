@@ -200,19 +200,23 @@ def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
 def get_dataset(cfg, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
-        if cfg.name == 'MotifSimple':
-            df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'MotifOscillation':
-            df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'MotifBifurcation':
-            df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'Saved':
-            data_dir = Path(cfg.data_dir)
-            df = pd.read_csv(data_dir/f'{data_dir.stem}.csv')
+        if not (Path(cfg.data_dir)/'processed').exists():
+            if cfg.name == 'MotifSimple':
+                df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
+            elif cfg.name == 'MotifOscillation':
+                df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
+            elif cfg.name == 'MotifBifurcation':
+                df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
+            elif cfg.name == 'Saved':
+                data_dir = Path(cfg.data_dir)
+                df = pd.read_csv(data_dir/f'{data_dir.stem}.csv')
+            else:
+                raise ValueError(f'Unknown dataset: {cfg.name}')
+            splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
+            splits = [process_measurements2(s, cfg.sparsify_step_time, cfg.num_neighbors, 0) for s in splits]
         else:
-            raise ValueError(f'Unknown dataset: {cfg.name}')
-        splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
-        splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
+            splits = [0, 0, 0]
+            splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
 
         return splits
 
@@ -227,6 +231,8 @@ def main(cfg):
         raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
 
     train, val, test = map(DatasetMerged, zip(*[get_dataset(v, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
+    breakpoint()
+    print('end')
 
 
 if __name__ == "__main__":
