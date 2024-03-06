@@ -113,7 +113,7 @@ def main(cfg):
             dataset_summary['name'].append(ds.name)
             dataset_summary['path'].append(ds.get('path', ''))
             dataset_summary['num_neighbors'].append(ds.num_neighbors)
-            dataset_summary['sparsifier_TimeSkipByStep_step'].append(ds.sparsifier.step)
+            dataset_summary['sparsify_step_time'].append(ds.sparsify_step_time)
         cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}
         # normalize dataset list in by sorting by name, then sorting by path
         # cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
@@ -148,7 +148,7 @@ def main(cfg):
     )
 
     splits = map(datasets.DatasetMerged, zip(*[
-        datasets.get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)
+        datasets.get_dataset(v, rng_seed=cfg.rng_seed)
         for v in cfg.dataset
     ]))
     splits = {k: s.shuffle() for k, s in zip(('train', 'val', 'test'), splits)}
