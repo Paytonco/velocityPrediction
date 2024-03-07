@@ -52,12 +52,10 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
     data.labels = torch.arange(data.num_nodes, dtype=torch.long)
     edge_index_nodes = []
     for i in range(data.num_nodes):
-        labels = data.labels.roll(-i)[::sparsify_step_time]
-        mask = (labels.to(torch.float64) - labels[0]).abs()
-        mask = mask >= sparsify_step_time
-        mask[0] = True
-        edge_index_num_neighbors = tg.nn.knn_graph(labels[mask], num_neighbors)
-        node_i = labels[edge_index_num_neighbors[0][edge_index_num_neighbors[1] == 0]]
+        label_idx, roll_by = divmod(i, sparsify_step_time)
+        labels = data.labels.roll(-roll_by)[::sparsify_step_time]
+        edge_index_num_neighbors = tg.nn.knn_graph(labels, num_neighbors)
+        node_i = labels[edge_index_num_neighbors[0][edge_index_num_neighbors[1] == label_idx]]
         node_j = torch.full(node_i.size(), i)
         edge_index_nodes.append(torch.stack((node_i, node_j)))
     # keep self-loops
@@ -72,32 +70,11 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
         neighborhood = Data(
             poi_pos=data.pos[[i]], poi_vel=data.vel[[i]], poi_t=data.t[[i]],
             pos=pos, vel=vel, t=t,
-            labels=labels
+            # labels=labels
         )
         data_list.append(neighborhood)
 
     return data_list
-
-    # split into data list
-    # data_list = []
-    # for i in range(data.num_nodes):
-    #     idx = slice(0, 1)  # -> [0:1]
-    #     neighborhood = data.subgraph(data.edge_index[0][data.edge_index[1] == i])
-    #     neighborhood.edge_index = None
-    #     assert (data.pos[i] == neighborhood.pos[0]).all()
-    #     assert (data.vel[i] == neighborhood.vel[0]).all()
-    #     assert (data.t[i] == neighborhood.t[0]).all()
-    #     neighborhood.poi_t = neighborhood.t[idx]
-    #     neighborhood.poi_pos = neighborhood.pos[idx]
-    #     neighborhood.poi_vel = neighborhood.vel[idx]
-    #     edge_index_num_neighbors = tg.nn.knn_graph(neighborhood.t, num_neighbors)
-    #     neighbor_i, neighbor_j = edge_index_num_neighbors
-    #     neighborhood = neighborhood.subgraph(neighbor_i[neighbor_j == 0])
-    #     neighborhood.edge_index = None
-    #     data_list.append(neighborhood)
-    # breakpoint()
-
-    # return data_list
 
 
 def process_measurements(measurements, sparsifier, num_neighbors, poi_idx):
