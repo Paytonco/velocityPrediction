@@ -85,6 +85,7 @@ def test_datasets_num_neighbors_correct_size(num_neighbors):
 
 
 @pytest.mark.parametrize('sparsify_step_time', [7, 11, 13])
+#@pytest.mark.parametrize('sparsify_step_time', [10])
 def test_datasets_sparsify_step_time_sparsifies(sparsify_step_time):
     with hydra.initialize_config_dir(version_base=None, config_dir=str(utils.ROOT_DIR/'configs')):
         cfg = hydra.compose(config_name='main', overrides=[
@@ -102,7 +103,7 @@ def test_datasets_sparsify_step_time_sparsifies(sparsify_step_time):
     for s, s_df in zip(splits, splits_df):
         s_df = s_df.sort_values('t', ignore_index=True)
         for i, d in enumerate(s):
-            if i < sparsify_step_time*2 + 1 or i >= len(s) - sparsify_step_time + 1:  # skip the poi on the boundary
+            if i < sparsify_step_time or i >= len(s) - 1 - sparsify_step_time:  # skip the poi on the boundary
                 continue
             # i+1 is the index of the poi in s_df, assert to be sure
             assert torch.tensor(s_df.loc[i, 't']) == d.poi_t
@@ -110,4 +111,4 @@ def test_datasets_sparsify_step_time_sparsifies(sparsify_step_time):
             idx_ahead = i + sparsify_step_time
             idx_behind = i - sparsify_step_time
             t_df = torch.tensor(s_df.iloc[[idx_behind, idx_ahead]]['t'].to_numpy())
-            assert (t_df == d.t.sort()[0]).all()
+            assert (t_df == d.t.sort()[0]).all(), i
