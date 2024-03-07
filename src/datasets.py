@@ -52,7 +52,12 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
     data.labels = torch.arange(data.num_nodes, dtype=torch.long)
     edge_index_nodes = []
     for i in range(data.num_nodes):
-        node_i = data.labels.roll(-i)[::sparsify_step_time]
+        labels = data.labels.roll(-i)[::sparsify_step_time]
+        mask = (labels.to(torch.float64) - labels[0]).abs()
+        mask = mask >= sparsify_step_time
+        mask[0] = True
+        edge_index_num_neighbors = tg.nn.knn_graph(labels[mask], num_neighbors)
+        node_i = labels[edge_index_num_neighbors[0][edge_index_num_neighbors[1] == 0]]
         node_j = torch.full(node_i.size(), i)
         edge_index_nodes.append(torch.stack((node_i, node_j)))
     # keep self-loops
@@ -64,20 +69,11 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
     ))
     data_list = []
     for i, (pos, vel, t, labels) in enumerate(data_values):
-        assert (data.pos[i] == pos[0]).all(), i
-        assert (data.vel[i] == vel[0]).all(), i
-        assert (data.t[i] == t[0]).all(), i
-        assert (data.labels[i] == labels[0]).all(), i
-        neighborhood = Data(poi_pos=pos[[0]], poi_vel=vel[[0]], poi_t=t[[0]])
-        mask = (labels.to(torch.float64) - labels[0]).abs()
-        mask = mask >= sparsify_step_time
-        mask[0] = True
-        edge_index_num_neighbors = tg.nn.knn_graph(labels[mask], num_neighbors)
-        poi_neighbors = edge_index_num_neighbors[0][edge_index_num_neighbors[1] == 0]
-        neighborhood.pos = pos[poi_neighbors]
-        neighborhood.vel = vel[poi_neighbors]
-        neighborhood.t = t[poi_neighbors]
-        neighborhood.labels = labels[poi_neighbors]
+        neighborhood = Data(
+            poi_pos=data.pos[[i]], poi_vel=data.vel[[i]], poi_t=data.t[[i]],
+            pos=pos, vel=vel, t=t,
+            labels=labels
+        )
         data_list.append(neighborhood)
 
     return data_list
