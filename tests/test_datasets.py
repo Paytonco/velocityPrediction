@@ -13,8 +13,9 @@ import utils
     ['+dataset@dataset.A=MotifSimple'],
     ['+dataset@dataset.A=MotifOscillation'],
     ['+dataset@dataset.A=MotifBifurcation'],
+    ['+dataset@dataset.A=SCVeloSimulation'],
     *[
-        ['+dataset@dataset.A=Saved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
+        ['+dataset@dataset.A=SCVeloSaved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
         for ds in ('bonemarrow', 'dentategyrus', 'pancreas',
                    # 'forebrain'  # large memory requirement
                    # 'pbmc68k'  # large memory requirement
@@ -34,7 +35,8 @@ def test_datasets_constant_poi_varying_num_neighbors(overrides_dataset):
 
     for s1, s2 in zip(splits1, splits2):
         data1, data2 = s1._data, s2._data
-        for (k, v1), (_, v2) in zip(data1, data2):
+        for (k, v1) in data1:
+            v2 = data2[k]
             if k.startswith('poi'):
                 assert (v1 == v2).all(), k
 
@@ -43,8 +45,9 @@ def test_datasets_constant_poi_varying_num_neighbors(overrides_dataset):
     ['+dataset@dataset.A=MotifSimple'],
     ['+dataset@dataset.A=MotifOscillation'],
     ['+dataset@dataset.A=MotifBifurcation'],
+    ['+dataset@dataset.A=SCVeloSimulation'],
     *[
-        ['+dataset@dataset.A=Saved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
+        ['+dataset@dataset.A=SCVeloSaved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
         for ds in ('bonemarrow', 'dentategyrus', 'pancreas',
                    # 'forebrain'  # large memory requirement
                    # 'pbmc68k'  # large memory requirement
@@ -64,7 +67,8 @@ def test_datasets_constant_poi_varying_sparsify_step_time(overrides_dataset):
 
     for s1, s2 in zip(splits1, splits2):
         data1, data2 = s1._data, s2._data
-        for (k, v1), (_, v2) in zip(data1, data2):
+        for (k, v1) in data1:
+            v2 = data2[k]
             if k.startswith('poi'):
                 assert (v1 == v2).all(), k
 

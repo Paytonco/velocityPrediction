@@ -2,6 +2,11 @@ defaults:
   - Dataset
   - _self_
 
-name: Saved
+name: SCVeloSaved
 data_dir: ???
+umap:
+  n_components: 2
+csv:
+  load_saved: true
+  name_suffix: umap_n_components_${..umap.n_components}
 processed_file_name: sparsify_step_time_${.sparsify_step_time}__num_neighbors_${.num_neighbors}

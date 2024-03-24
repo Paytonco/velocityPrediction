@@ -46,8 +46,8 @@ class Dataset(InMemoryDataset):
 def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
     t = torch.tensor(measurements['t'].to_numpy())
-    pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
-    vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
+    pos = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('x')]].to_numpy())
+    vel = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('v')]].to_numpy())
     vel = utils.normalize(vel)
     data = Data(t=t, pos=pos, vel=vel)
 
@@ -136,8 +136,8 @@ def generate_measurements_bifurcation(num_pnts, epsilon):
     )
 
 
-def generate_measurements_scvelo_simulation(num_pnts):
-    adata = scvelo.datasets.simulation(n_obs=num_pnts)
+def generate_measurements_scvelo_simulation(cfg):
+    adata = scvelo.datasets.simulation(n_obs=cfg.num_pnts)
 
     scvelo.pp.filter_and_normalize(adata)
     scvelo.pp.moments(adata)
@@ -147,7 +147,7 @@ def generate_measurements_scvelo_simulation(num_pnts):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata)
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     t = adata.obs.velocity_pseudotime.to_numpy()
@@ -160,7 +160,7 @@ def generate_measurements_scvelo_simulation(num_pnts):
     )
 
 
-def download_bonemarrow(data_dir):
+def download_bonemarrow(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     adata = scvelo.datasets.bonemarrow(path_h5ad)
 
@@ -172,21 +172,17 @@ def download_bonemarrow(data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
-    pseudotime = adata.obs.velocity_pseudotime
-    positions = adata.obsm['X_umap']
-    velocities = adata.obsm['velocity_umap']
-    data = pd.DataFrame(
-        data=np.concatenate((positions, velocities), axis=1),
-        index=pseudotime.rename('t'),
-        columns=['x1', 'x2', 'v1', 'v2']
+    return dict(
+        t=adata.obs.velocity_pseudotime,
+        pos=adata.obsm['X_umap'],
+        vel=adata.obsm['velocity_umap']
     )
-    data.to_csv(data_dir/f'{data_dir.stem}.csv')
 
 
-def download_dentategyrus(data_dir):
+def download_dentategyrus(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     adata = scvelo.datasets.dentategyrus(path_h5ad)
 
@@ -198,20 +194,17 @@ def download_dentategyrus(data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
-    pseudotime = adata.obs.velocity_pseudotime
-    positions = adata.obsm['X_umap']
-    velocities = adata.obsm['velocity_umap']
-    data = pd.DataFrame(
-        data=np.concatenate((positions, velocities), axis=1),
-        index=pseudotime.rename('t'),
-        columns=['x1', 'x2', 'v1', 'v2']
+    return dict(
+        t=adata.obs.velocity_pseudotime,
+        pos=adata.obsm['X_umap'],
+        vel=adata.obsm['velocity_umap']
     )
-    data.to_csv(data_dir/f'{data_dir.stem}.csv')
 
 
-def download_forebrain(data_dir):
+def download_forebrain(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     try:
         adata = scvelo.datasets.forebrain(path_h5ad)
@@ -237,21 +230,17 @@ def download_forebrain(data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
-    pseudotime = adata.obs.velocity_pseudotime
-    positions = adata.obsm['X_umap']
-    velocities = adata.obsm['velocity_umap']
-    data = pd.DataFrame(
-        data=np.concatenate((positions, velocities), axis=1),
-        index=pseudotime.rename('t'),
-        columns=['x1', 'x2', 'v1', 'v2']
+    return dict(
+        t=adata.obs.velocity_pseudotime,
+        pos=adata.obsm['X_umap'],
+        vel=adata.obsm['velocity_umap']
     )
-    data.to_csv(data_dir/f'{data_dir.stem}.csv')
 
 
-def download_pancreas(data_dir):
+def download_pancreas(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     adata = scvelo.datasets.pancreas(path_h5ad)
 
@@ -263,20 +252,17 @@ def download_pancreas(data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
-    pseudotime = adata.obs.velocity_pseudotime
-    positions = adata.obsm['X_umap']
-    velocities = adata.obsm['velocity_umap']
-    data = pd.DataFrame(
-        data=np.concatenate((positions, velocities), axis=1),
-        index=pseudotime.rename('t'),
-        columns=['x1', 'x2', 'v1', 'v2']
+    return dict(
+        t=adata.obs.velocity_pseudotime,
+        pos=adata.obsm['X_umap'],
+        vel=adata.obsm['velocity_umap']
     )
-    data.to_csv(data_dir/f'{data_dir.stem}.csv')
 
 
-def download_pbmc68k(data_dir):
+def download_pbmc68k(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     adata = scvelo.datasets.pbmc68k(path_h5ad)
 
@@ -288,18 +274,14 @@ def download_pbmc68k(data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
-    pseudotime = adata.obs.velocity_pseudotime
-    positions = adata.obsm['X_umap']
-    velocities = adata.obsm['velocity_umap']
-    data = pd.DataFrame(
-        data=np.concatenate((positions, velocities), axis=1),
-        index=pseudotime.rename('t'),
-        columns=['x1', 'x2', 'v1', 'v2']
+    return dict(
+        t=adata.obs.velocity_pseudotime,
+        pos=adata.obsm['X_umap'],
+        vel=adata.obsm['velocity_umap']
     )
-    data.to_csv(data_dir/f'{data_dir.stem}.csv')
 
 
 def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
@@ -322,19 +304,40 @@ def get_dataset(cfg, rng_seed=0):
             elif cfg.name == 'MotifBifurcation':
                 df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
             elif cfg.name == 'SCVeloSimulation':
-                df = generate_measurements_scvelo_simulation(cfg.num_pnts)
-            elif cfg.name == 'Saved':
+                df = generate_measurements_scvelo_simulation(cfg)
+            elif cfg.name == 'SCVeloSaved':
                 data_dir = Path(cfg.data_dir)
                 name = data_dir.stem
-                csv_path = data_dir/f'{name}.csv'
-                if not csv_path.exists():
-                    if name == 'forebrain':
-                        download_forebrain(data_dir)
+                csv_path = data_dir/f'{name}__{cfg.csv.name_suffix}.csv'
+                if cfg.csv.load_saved and csv_path.exists():
+                    df = pd.read_csv(csv_path)
+                else:
+                    if name == 'bonemarrow':
+                        data = download_bonemarrow(cfg, data_dir)
+                    elif name == 'dentategyrus':
+                        data = download_dentategyrus(cfg, data_dir)
+                    elif name == 'forebrain':
+                        data = download_forebrain(cfg, data_dir)
                     elif name == 'pancreas':
-                        download_pancreas(data_dir)
+                        data = download_pancreas(cfg, data_dir)
+                    elif name == 'pbmc68k':
+                        data = download_pbmc68k(cfg, data_dir)
                     else:
                         raise ValueError(f'Unknown saved dataset: {name}')
-                df = pd.read_csv(data_dir/f'{data_dir.stem}.csv')
+                    data = np.concatenate((
+                        data['t'].to_numpy()[:, None],
+                        data['pos'], data['vel']
+                    ), axis=1)
+                    dims = [*range(1, cfg.umap.n_components + 1)]
+                    df = pd.DataFrame(
+                        data=data,
+                        columns=[
+                            't',
+                            *(f'x{i}' for i in dims),
+                            *(f'v{i}' for i in dims)
+                        ]
+                    )
+                    df.to_csv(csv_path, index=False)
             else:
                 raise ValueError(f'Unknown dataset: {cfg.name}')
             splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
