@@ -1,0 +1,7 @@
+defaults:
+  - Dataset
+  - Generated
+  - _self_
+
+name: SCVeloSimulation
+processed_file_name: sparsify_step_time_${.sparsify_step_time}__num_neighbors_${.num_neighbors}__num_pnts_${.num_pnts}

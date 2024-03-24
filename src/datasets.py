@@ -10,6 +10,8 @@ import pandas as pd
 import torch
 import torch_geometric as tg
 from torch_geometric.data import Data, InMemoryDataset
+import scvelo
+import tables
 
 import utils
 
@@ -36,12 +38,12 @@ class Dataset(InMemoryDataset):
         return [f'{self.cfg.processed_file_name}__split_{self.split}.pt']
 
     def process(self):
-        data_list = process_measurements2(self.df, self.cfg.sparsify_step_time, self.cfg.num_neighbors, 0)
+        data_list = process_measurements(self.df, self.cfg.sparsify_step_time, self.cfg.num_neighbors, 0)
 
         self.save(data_list, self.processed_paths[0])
 
 
-def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_idx):
+def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
     t = torch.tensor(measurements['t'].to_numpy())
     pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
@@ -72,37 +74,6 @@ def process_measurements2(measurements, sparsify_step_time, num_neighbors, poi_i
             pos=pos, vel=vel, t=t,
             # labels=labels
         )
-        data_list.append(neighborhood)
-
-    return data_list
-
-
-def process_measurements(measurements, sparsifier, num_neighbors, poi_idx):
-    measurements = measurements.sort_values('t', ignore_index=True)
-    measurements = sparsifier(measurements)
-    t = torch.tensor(measurements['t'].to_numpy())
-    pos = torch.tensor(measurements[['x1', 'x2']].to_numpy())
-    vel = torch.tensor(measurements[['v1', 'v2']].to_numpy())
-    vel = utils.normalize(vel)
-    data = Data(t=t, pos=pos, vel=vel)
-
-    windows = torch.arange(data.t.numel()).unfold(0, num_neighbors + 1, 1)
-    mask_poi = torch.zeros(num_neighbors + 1, dtype=bool)
-    mask_poi[num_neighbors // 2 + poi_idx] = True
-    node_i = windows[:, mask_poi].squeeze().repeat_interleave(num_neighbors)
-    node_j = windows[:, ~mask_poi].ravel()
-    data.edge_index = torch.stack((node_j, node_i))
-    # points near the time interval boundary have no neighbors
-    data = data.subgraph(node_j)
-
-    node_j, node_i = data.edge_index
-    data_list = []
-    for i in torch.unique(node_i):
-        idx = slice(i, i+1)  # -> [i:i+1]
-        neighborhood = data.subgraph(node_j[node_i == i])
-        neighborhood.poi_t = data.t[idx]
-        neighborhood.poi_pos = data.pos[idx]
-        neighborhood.poi_vel = data.vel[idx]
         data_list.append(neighborhood)
 
     return data_list
@@ -165,6 +136,172 @@ def generate_measurements_bifurcation(num_pnts, epsilon):
     )
 
 
+def generate_measurements_scvelo_simulation(num_pnts):
+    adata = scvelo.datasets.simulation(n_obs=num_pnts)
+
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.umap(adata)
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    t = adata.obs.velocity_pseudotime.to_numpy()
+    pos = adata.obsm['X_umap']
+    vel = adata.obsm['velocity_umap']
+
+    return pd.DataFrame(
+        data=np.concatenate((t[:, None], pos, vel), axis=1),
+        columns=['t', 'x1', 'x2', 'v1', 'v2']
+    )
+
+
+def download_bonemarrow(data_dir):
+    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+    adata = scvelo.datasets.bonemarrow(path_h5ad)
+
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    pseudotime = adata.obs.velocity_pseudotime
+    positions = adata.obsm['X_umap']
+    velocities = adata.obsm['velocity_umap']
+    data = pd.DataFrame(
+        data=np.concatenate((positions, velocities), axis=1),
+        index=pseudotime.rename('t'),
+        columns=['x1', 'x2', 'v1', 'v2']
+    )
+    data.to_csv(data_dir/f'{data_dir.stem}.csv')
+
+
+def download_dentategyrus(data_dir):
+    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+    adata = scvelo.datasets.dentategyrus(path_h5ad)
+
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    pseudotime = adata.obs.velocity_pseudotime
+    positions = adata.obsm['X_umap']
+    velocities = adata.obsm['velocity_umap']
+    data = pd.DataFrame(
+        data=np.concatenate((positions, velocities), axis=1),
+        index=pseudotime.rename('t'),
+        columns=['x1', 'x2', 'v1', 'v2']
+    )
+    data.to_csv(data_dir/f'{data_dir.stem}.csv')
+
+
+def download_forebrain(data_dir):
+    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+    try:
+        adata = scvelo.datasets.forebrain(path_h5ad)
+    except TypeError:
+        f = tables.open_file(path_h5ad, mode='r+')
+        # these are empty
+        f.remove_node('/row_graphs')
+        f.remove_node('/col_graphs')
+        # rename to match AnnData data structure
+        f.rename_node('/row_attrs', 'obs')
+        f.rename_node('/col_attrs', 'var')
+        f.rename_node('/matrix', 'X')
+        f.close()
+        adata = scvelo.datasets.forebrain(path_h5ad)
+
+    scvelo.pp.remove_duplicate_cells(adata)  # for forebrain
+    scvelo.pp.neighbors(adata)  # for forebrain
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    pseudotime = adata.obs.velocity_pseudotime
+    positions = adata.obsm['X_umap']
+    velocities = adata.obsm['velocity_umap']
+    data = pd.DataFrame(
+        data=np.concatenate((positions, velocities), axis=1),
+        index=pseudotime.rename('t'),
+        columns=['x1', 'x2', 'v1', 'v2']
+    )
+    data.to_csv(data_dir/f'{data_dir.stem}.csv')
+
+
+def download_pancreas(data_dir):
+    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+    adata = scvelo.datasets.pancreas(path_h5ad)
+
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    pseudotime = adata.obs.velocity_pseudotime
+    positions = adata.obsm['X_umap']
+    velocities = adata.obsm['velocity_umap']
+    data = pd.DataFrame(
+        data=np.concatenate((positions, velocities), axis=1),
+        index=pseudotime.rename('t'),
+        columns=['x1', 'x2', 'v1', 'v2']
+    )
+    data.to_csv(data_dir/f'{data_dir.stem}.csv')
+
+
+def download_pbmc68k(data_dir):
+    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+    adata = scvelo.datasets.pbmc68k(path_h5ad)
+
+    scvelo.pp.filter_and_normalize(adata)
+    scvelo.pp.moments(adata)
+    scvelo.tl.velocity(adata, mode='stochastic')
+
+    # must call velocity_pseudotime before velocity_graph
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_pseudotime(adata)
+
+    scvelo.tl.umap(adata)  # for forebrain and bonemarrow and pbmc68k
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    pseudotime = adata.obs.velocity_pseudotime
+    positions = adata.obsm['X_umap']
+    velocities = adata.obsm['velocity_umap']
+    data = pd.DataFrame(
+        data=np.concatenate((positions, velocities), axis=1),
+        index=pseudotime.rename('t'),
+        columns=['x1', 'x2', 'v1', 'v2']
+    )
+    data.to_csv(data_dir/f'{data_dir.stem}.csv')
+
+
 def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
     rng = np.random.default_rng(seed=rng_seed)
     idx = rng.permutation(len(df))
@@ -184,13 +321,24 @@ def get_dataset(cfg, rng_seed=0):
                 df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
             elif cfg.name == 'MotifBifurcation':
                 df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
+            elif cfg.name == 'SCVeloSimulation':
+                df = generate_measurements_scvelo_simulation(cfg.num_pnts)
             elif cfg.name == 'Saved':
                 data_dir = Path(cfg.data_dir)
+                name = data_dir.stem
+                csv_path = data_dir/f'{name}.csv'
+                if not csv_path.exists():
+                    if name == 'forebrain':
+                        download_forebrain(data_dir)
+                    elif name == 'pancreas':
+                        download_pancreas(data_dir)
+                    else:
+                        raise ValueError(f'Unknown saved dataset: {name}')
                 df = pd.read_csv(data_dir/f'{data_dir.stem}.csv')
             else:
                 raise ValueError(f'Unknown dataset: {cfg.name}')
             splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
-            splits = [process_measurements2(s, cfg.sparsify_step_time, cfg.num_neighbors, 0) for s in splits]
+            splits = [process_measurements(s, cfg.sparsify_step_time, cfg.num_neighbors, 0) for s in splits]
         else:
             splits = [0, 0, 0]
             splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
