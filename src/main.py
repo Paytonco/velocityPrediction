@@ -114,6 +114,7 @@ def main(cfg):
             dataset_summary['data_dir'].append(ds.get('data_dir', ''))
             dataset_summary['num_neighbors'].append(ds.num_neighbors)
             dataset_summary['sparsify_step_time'].append(ds.sparsify_step_time)
+            dataset_summary['umap_num_components'].append(ds.umap.n_components)
         cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}
         # normalize dataset list in by sorting by name, then sorting by path
         # cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
