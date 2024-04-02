@@ -18,6 +18,7 @@ wandb:
   project: rna_vel_pred
   run: null
   dir: ${..out_dir}
+  tags: []
 trainer:
   copy_saved_cfg:
     - dataset

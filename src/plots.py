@@ -14,9 +14,35 @@ import seaborn as sns
 import wandb
 import matplotlib
 import matplotlib.pyplot as plt
+from anndata import AnnData
+import scvelo
 
 import datasets
+import utils
 import wandbruns
+
+
+def adata_from_pos(pos):
+    adata = AnnData(pos)
+    scvelo.pp.neighbors(adata)
+    scvelo.tl.umap(adata, n_components=2)
+    return adata
+
+
+def compute_adata_velocity(adata, vel):
+    adata.layers['velocity'] = vel
+    """
+    Motivation for the next line, probably wrong.
+
+    Our positions (poi_pos) are the gene expressions, so the change in gene
+    expression is the difference of two positions. This approximates the
+    velocity vector set above.
+    """
+    adata.layers['spliced'] = adata.X
+    scvelo.tl.velocity_graph(adata)
+    scvelo.tl.velocity_embedding(adata, basis='umap')
+
+    return adata.obsm['velocity_umap']
 
 
 def get_runs(cfg):
@@ -25,11 +51,26 @@ def get_runs(cfg):
     for r in rs:
         run_cfg = OmegaConf.create(r.config)
         run_dir = Path(cfg.out_dir)/'runs'/r.id
-        run_datasests = {s: InMemoryDataset(run_dir) for s in ('train', 'val', 'test')}
-        for k, v in run_datasests.items():
+        run_datasets = {s: InMemoryDataset(run_dir) for s in ('train', 'val', 'test')}
+        for k, v in run_datasets.items():
             v.load(run_dir/f'pred_{k}.pt')
 
-        yield r.id, run_dir, run_cfg, run_datasests
+        for k in run_datasets:
+            data = run_datasets[k]._data
+
+            if data.pos.size(1) == 2:
+                continue
+
+            adata = adata_from_pos(data.poi_pos.numpy())
+            poi_pos = adata.obsm['X_umap']
+            poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
+            poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
+
+            data.poi_pos = utils.normalize(torch.tensor(poi_pos))
+            data.poi_vel = utils.normalize(torch.tensor(poi_vel))
+            data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
+
+        yield r.id, run_dir, run_cfg, run_datasets
 
 
 def complete_edges(num_nodes):
@@ -96,7 +137,7 @@ class VelPred(Plotter):
 
     def iter_split(self, split, ds):
         fig, ax = plt.subplots()
-        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        data = next(iter(DataLoader(ds, batch_size=len(ds) // 4)))
         plot_field(ax, data)
         fig.savefig(f'{self.run_dir}/pred_{split}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
         plt.close(fig)

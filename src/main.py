@@ -95,7 +95,8 @@ def main(cfg):
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
         dir=cfg.wandb.dir,
-        job_type=job_type
+        tags=cfg.wandb.tags,
+        job_type=job_type,
     )
     with omegaconf.open_dict(cfg):
         cfg.out_dir = str(Path(cfg.out_dir).resolve())
