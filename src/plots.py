@@ -51,24 +51,39 @@ def get_runs(cfg):
     for r in rs:
         run_cfg = OmegaConf.create(r.config)
         run_dir = Path(cfg.out_dir)/'runs'/r.id
+
         run_datasets = {s: InMemoryDataset(run_dir) for s in ('train', 'val', 'test')}
         for k, v in run_datasets.items():
             v.load(run_dir/f'pred_{k}.pt')
 
+        training_datasets = []
+        for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
+            OmegaConf.update(v, 'umap.n_components', 2)
+            OmegaConf.update(v, 'csv.name_suffix', 'umap_n_components_2')
+            training_datasets.append(datasets.get_dataset(v, rng_seed=run_cfg.rng_seed))
+        training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
+        training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
+
         for k in run_datasets:
             data = run_datasets[k]._data
-
             if data.pos.size(1) == 2:
                 continue
+            training_data = training_datasets[k]._data
+
+            data_sort = data.poi_measurement_id.argsort()
+            for k, v in data:
+                data[k] = v[data_sort]
+            training_data_sort = training_data.poi_measurement_id.argsort()
+            for k, v in training_data:
+                training_data[k] = v[training_data_sort]
 
             adata = adata_from_pos(data.poi_pos.numpy())
-            poi_pos = adata.obsm['X_umap']
-            poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
             poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
 
-            data.poi_pos = utils.normalize(torch.tensor(poi_pos))
-            data.poi_vel = utils.normalize(torch.tensor(poi_vel))
+            data.poi_pos = training_data.poi_pos
+            data.poi_vel = training_data.poi_vel
             data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
+            breakpoint()
 
         yield r.id, run_dir, run_cfg, run_datasets
 

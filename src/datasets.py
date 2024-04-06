@@ -45,11 +45,12 @@ class Dataset(InMemoryDataset):
 
 def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
+    measurement_id = torch.tensor(measurements['measurement_id'].to_numpy())
     t = torch.tensor(measurements['t'].to_numpy())
     pos = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('x')]].to_numpy())
     vel = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('v')]].to_numpy())
     vel = utils.normalize(vel)
-    data = Data(t=t, pos=pos, vel=vel)
+    data = Data(t=t, pos=pos, vel=vel, measurement_id=measurement_id)
 
     data.labels = torch.arange(data.num_nodes, dtype=torch.long)
     edge_index_nodes = []
@@ -62,15 +63,16 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
         edge_index_nodes.append(torch.stack((node_i, node_j)))
     # keep self-loops
     data.edge_index = torch.cat(edge_index_nodes, dim=1)
-    data_keys = ('pos', 'vel', 't', 'labels')
+    data_keys = ('pos', 'vel', 't', 'labels', 'measurement_id')
     data_values = zip(*(
         tg.utils.unbatch(data[k][data.edge_index[0]], data.edge_index[1])
         for k in data_keys
     ))
     data_list = []
-    for i, (pos, vel, t, labels) in enumerate(data_values):
+    for i, (pos, vel, t, labels, measurement_id) in enumerate(data_values):
         neighborhood = Data(
             poi_pos=data.pos[[i]], poi_vel=data.vel[[i]], poi_t=data.t[[i]],
+            poi_measurement_id=data.measurement_id[[i]],
             pos=pos, vel=vel, t=t,
             # labels=labels
         )
@@ -293,53 +295,63 @@ def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
     return df.iloc[train], df.iloc[val], df.iloc[test]
 
 
+def get_dataset_df(cfg, rng_seed=0):
+    with pl.utilities.seed.isolate_rng():
+        pl.seed_everything(rng_seed, workers=True)
+        if cfg.name == 'MotifSimple':
+            df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
+        elif cfg.name == 'MotifOscillation':
+            df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
+        elif cfg.name == 'MotifBifurcation':
+            df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
+        elif cfg.name == 'SCVeloSimulation':
+            df = generate_measurements_scvelo_simulation(cfg)
+        elif cfg.name == 'SCVeloSaved':
+            data_dir = Path(cfg.data_dir)
+            name = data_dir.stem
+            csv_path = data_dir/f'{name}__{cfg.csv.name_suffix}.csv'
+            if cfg.csv.load_saved and csv_path.exists():
+                df = pd.read_csv(csv_path)
+            else:
+                if name == 'bonemarrow':
+                    data = download_bonemarrow(cfg, data_dir)
+                elif name == 'dentategyrus':
+                    data = download_dentategyrus(cfg, data_dir)
+                elif name == 'forebrain':
+                    data = download_forebrain(cfg, data_dir)
+                elif name == 'pancreas':
+                    data = download_pancreas(cfg, data_dir)
+                elif name == 'pbmc68k':
+                    data = download_pbmc68k(cfg, data_dir)
+                else:
+                    raise ValueError(f'Unknown saved dataset: {name}')
+                data = np.concatenate((
+                    data['t'].to_numpy()[:, None],
+                    data['pos'], data['vel']
+                ), axis=1)
+                dims = [*range(1, cfg.umap.n_components + 1)]
+                df = pd.DataFrame(
+                    data=data,
+                    columns=[
+                        't',
+                        *(f'x{i}' for i in dims),
+                        *(f'v{i}' for i in dims)
+                    ]
+                )
+                df.to_csv(csv_path, index=False)
+        else:
+            raise ValueError(f'Unknown dataset: {cfg.name}')
+
+        df['measurement_id'] = range(len(df))
+
+        return df
+
+
 def get_dataset(cfg, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
         if not (Path(cfg.data_dir)/'processed').exists():
-            if cfg.name == 'MotifSimple':
-                df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
-            elif cfg.name == 'MotifOscillation':
-                df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
-            elif cfg.name == 'MotifBifurcation':
-                df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
-            elif cfg.name == 'SCVeloSimulation':
-                df = generate_measurements_scvelo_simulation(cfg)
-            elif cfg.name == 'SCVeloSaved':
-                data_dir = Path(cfg.data_dir)
-                name = data_dir.stem
-                csv_path = data_dir/f'{name}__{cfg.csv.name_suffix}.csv'
-                if cfg.csv.load_saved and csv_path.exists():
-                    df = pd.read_csv(csv_path)
-                else:
-                    if name == 'bonemarrow':
-                        data = download_bonemarrow(cfg, data_dir)
-                    elif name == 'dentategyrus':
-                        data = download_dentategyrus(cfg, data_dir)
-                    elif name == 'forebrain':
-                        data = download_forebrain(cfg, data_dir)
-                    elif name == 'pancreas':
-                        data = download_pancreas(cfg, data_dir)
-                    elif name == 'pbmc68k':
-                        data = download_pbmc68k(cfg, data_dir)
-                    else:
-                        raise ValueError(f'Unknown saved dataset: {name}')
-                    data = np.concatenate((
-                        data['t'].to_numpy()[:, None],
-                        data['pos'], data['vel']
-                    ), axis=1)
-                    dims = [*range(1, cfg.umap.n_components + 1)]
-                    df = pd.DataFrame(
-                        data=data,
-                        columns=[
-                            't',
-                            *(f'x{i}' for i in dims),
-                            *(f'v{i}' for i in dims)
-                        ]
-                    )
-                    df.to_csv(csv_path, index=False)
-            else:
-                raise ValueError(f'Unknown dataset: {cfg.name}')
+            df = get_dataset_df(cfg, rng_seed=rng_seed)
             splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
             splits = [process_measurements(s, cfg.sparsify_step_time, cfg.num_neighbors, 0) for s in splits]
         else:
