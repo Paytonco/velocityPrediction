@@ -1,0 +1,11 @@
+defaults:
+  - /wandb@wandb
+  - _self_
+
+filters:
+  - cfg_main
+  - job_type
+  - tags
+verbose: false
+job_type: fit
+tags: []

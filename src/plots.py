@@ -56,15 +56,16 @@ def get_runs(cfg):
         for k, v in run_datasets.items():
             v.load(run_dir/f'pred_{k}.pt')
 
-        training_datasets = []
-        for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
-            OmegaConf.update(v, 'umap.n_components', 2)
-            OmegaConf.update(v, 'csv.name_suffix', 'umap_n_components_2')
-            training_datasets.append(datasets.get_dataset(v, rng_seed=run_cfg.rng_seed))
-        training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
-        training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
+        # training_datasets = []
+        # for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
+        #     OmegaConf.update(v, 'umap.n_components', 2)
+        #     OmegaConf.update(v, 'csv.name_suffix', 'umap_n_components_2')
+        #     training_datasets.append(datasets.get_dataset(v, rng_seed=run_cfg.rng_seed))
+        # training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
+        # training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
 
         for k in run_datasets:
+            continue
             data = run_datasets[k]._data
             if data.pos.size(1) == 2:
                 continue
@@ -166,52 +167,80 @@ class VelPred(Plotter):
 class MSESparseStep(Plotter):
     def __init__(self, cfg):
         super().__init__(cfg)
-        self.mse_tuples = []
+        self.mse_dfs = []
 
     def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_id = run_id
         self.run_cfg = run_cfg
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
         mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
-        self.mse_tuples.append((split, self.run_cfg.dataset[0].sparsifier.step, mse.item()))
+        df = pd.DataFrame(dict(
+            split=split,
+            sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time,
+            mse=mse.item(),
+            source=self.run_id,
+            umap_num_components=self.run_cfg.dataset_summary.umap_num_components,
+        ), index=[0])
+        self.mse_dfs.append(df)
 
     def end_iter_run(self):
-        df = pd.DataFrame(self.mse_tuples, columns=['split', 'sparsifier_step', 'mse'])
+        df = pd.concat(self.mse_dfs).reset_index(drop=True)
         for s in df['split'].unique():
             fig, ax = plt.subplots()
             sns.lineplot(
                 df[df['split'] == s],
                 x='sparsifier_step', y='mse',
+                hue='umap_num_components',
                 err_style='bars',
                 ax=ax,
             )
+            ax.set_xlabel('Time Sparsify Step')
+            ax.set_ylabel('MSE')
+            ax.get_legend().set_title(None)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(*zip(*sorted(zip(handles, labels), key=lambda t: int(t[1]))))
             fig.savefig(f'{self.cfg.plot_dir}/mse_sparsifier_step_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
 
 
 class MSENeighborSet(Plotter):
     def __init__(self, cfg):
         super().__init__(cfg)
-        self.mse_tuples = []
+        self.mse_dfs = []
 
     def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_id = run_id
         self.run_cfg = run_cfg
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
         mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
-        self.mse_tuples.append((split, self.run_cfg.dataset[0].num_neighbors, mse.item()))
+        df = pd.DataFrame(dict(
+            split=split,
+            num_neighbors=self.run_cfg.dataset[0].num_neighbors,
+            mse=mse.item(),
+            source=self.run_id,
+            umap_num_components=self.run_cfg.dataset_summary.umap_num_components,
+        ), index=[0])
+        self.mse_dfs.append(df)
 
     def end_iter_run(self):
-        df = pd.DataFrame(self.mse_tuples, columns=['split', 'num_neighbors', 'mse'])
+        df = pd.concat(self.mse_dfs).reset_index(drop=True)
         for s in df['split'].unique():
             fig, ax = plt.subplots()
             sns.lineplot(
                 df[df['split'] == s],
                 x='num_neighbors', y='mse',
+                hue='umap_num_components',
                 err_style='bars',
                 ax=ax,
             )
+            ax.set_xlabel('Num. Neighbors')
+            ax.set_ylabel('MSE')
+            ax.get_legend().set_title(None)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(*zip(*sorted(zip(handles, labels), key=lambda t: int(t[1]))))
             fig.savefig(f'{self.cfg.plot_dir}/mse_neighbor_set_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
 
 

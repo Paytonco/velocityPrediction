@@ -6,6 +6,7 @@ hydra:
 
 defaults:
   - model: First
+  - /wandb@wandb
   - _self_
 
 root_dir: /home/reepoi/GitHub/velocityPrediction
@@ -14,11 +15,7 @@ run_dir: ${.out_dir}/runs
 data_dir: ${.root_dir}/data
 rng_seed: 0
 wandb:
-  entity: taost
-  project: rna_vel_pred
-  run: null
   dir: ${..out_dir}
-  tags: []
 trainer:
   copy_saved_cfg:
     - dataset
