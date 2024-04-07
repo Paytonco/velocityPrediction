@@ -70,20 +70,25 @@ def get_runs(cfg):
                 continue
             training_data = training_datasets[k]._data
 
-            data_sort = data.poi_measurement_id.argsort()
-            for k, v in data:
-                data[k] = v[data_sort]
-            training_data_sort = training_data.poi_measurement_id.argsort()
-            for k, v in training_data:
-                training_data[k] = v[training_data_sort]
+            data_df = pd.DataFrame(dict(
+                idx=range(data.poi_measurement_id.size(0)),
+                measurement_id=data.poi_measurement_id.numpy()
+            ))
+            training_data_df = pd.DataFrame(dict(
+                idx=range(training_data.poi_measurement_id.size(0)),
+                measurement_id=training_data.poi_measurement_id.numpy()
+            ))
+            mapping = pd.merge(
+                data_df, training_data_df,
+                on='measurement_id', suffixes=('_data', '_training_data')
+            )  # preserves order of data_df's rows
 
             adata = adata_from_pos(data.poi_pos.numpy())
             poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
 
-            data.poi_pos = training_data.poi_pos
-            data.poi_vel = training_data.poi_vel
+            data.poi_pos = training_data.poi_pos[mapping['idx_training_data']]
+            data.poi_vel = training_data.poi_vel[mapping['idx_training_data']]
             data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
-            breakpoint()
 
         yield r.id, run_dir, run_cfg, run_datasets
 
@@ -245,9 +250,9 @@ def main(cfg):
         plot_dir = Path(cfg.plot_dir)/'dataset'
         plot_dir.mkdir()
         for k, v in cfg.dataset.items():
-            for s, ds in zip(('train', 'val', 'test'), datasets.get_dataset(v, cfg.data_dir, rng_seed=cfg.rng_seed)):
+            for s, ds in zip(('train', 'val', 'test'), map(datasets.DatasetMerged, zip(datasets.get_dataset(v, rng_seed=cfg.rng_seed)))):
                 fig, ax = plt.subplots()
-                ds = ds.shuffle()[:40]
+                ds = ds.shuffle()
                 data = next(iter(DataLoader(ds, batch_size=len(ds))))
                 plot_field(ax, data)
                 fig.savefig(plot_dir/f'{k}_{s}.{cfg.fmt}', format=cfg.fmt, bbox_inches='tight', pad_inches=.03)
