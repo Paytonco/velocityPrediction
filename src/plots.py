@@ -56,40 +56,20 @@ def get_runs(cfg):
         for k, v in run_datasets.items():
             v.load(run_dir/f'pred_{k}.pt')
 
-        # training_datasets = []
-        # for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
-        #     OmegaConf.update(v, 'umap.n_components', 2)
-        #     OmegaConf.update(v, 'csv.name_suffix', 'umap_n_components_2')
-        #     training_datasets.append(datasets.get_dataset(v, rng_seed=run_cfg.rng_seed))
-        # training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
-        # training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
-
         for k in run_datasets:
-            continue
             data = run_datasets[k]._data
-            if data.pos.size(1) == 2:
-                continue
-            training_data = training_datasets[k]._data
+            dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
+            for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
+                data[k] = data[k][:, dims_most_important]
 
-            data_df = pd.DataFrame(dict(
-                idx=range(data.poi_measurement_id.size(0)),
-                measurement_id=data.poi_measurement_id.numpy()
-            ))
-            training_data_df = pd.DataFrame(dict(
-                idx=range(training_data.poi_measurement_id.size(0)),
-                measurement_id=training_data.poi_measurement_id.numpy()
-            ))
-            mapping = pd.merge(
-                data_df, training_data_df,
-                on='measurement_id', suffixes=('_data', '_training_data')
-            )  # preserves order of data_df's rows
-
-            adata = adata_from_pos(data.poi_pos.numpy())
-            poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
-
-            data.poi_pos = training_data.poi_pos[mapping['idx_training_data']]
-            data.poi_vel = training_data.poi_vel[mapping['idx_training_data']]
-            data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
+            # adata = adata_from_pos(data.poi_pos.numpy())
+            # poi_pos = adata.obsm['X_umap']
+            # poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
+            # poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
+            #
+            # data.poi_pos = torch.tensor(poi_pos)
+            # data.poi_vel = utils.normalize(torch.tensor(poi_vel))
+            # data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
 
         yield r.id, run_dir, run_cfg, run_datasets
 
