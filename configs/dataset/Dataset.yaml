@@ -3,7 +3,8 @@ defaults:
 
 poi_idx: 0
 num_neighbors: 10  # not inclusive of poi
-data_dir: ???
+data_subdir: ???
+data_dir: ${...data_dir}/${.data_subdir}
 processed_file_name: ???
 splits:
   train: .7
