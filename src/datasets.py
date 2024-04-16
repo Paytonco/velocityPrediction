@@ -12,6 +12,7 @@ import torch_geometric as tg
 from torch_geometric.data import Data, Batch, InMemoryDataset
 import scvelo
 import tables
+import anndata
 
 import utils
 
@@ -199,7 +200,7 @@ def download_forebrain(cfg, data_dir):
     path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
     try:
         adata = scvelo.datasets.forebrain(path_h5ad)
-    except TypeError:
+    except (TypeError, anndata._io.utils.AnnDataReadError):
         f = tables.open_file(path_h5ad, mode='r+')
         # these are empty
         f.remove_node('/row_graphs')
