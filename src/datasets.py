@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch_geometric as tg
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data, Batch, InMemoryDataset
 import scvelo
 import tables
 
@@ -27,20 +27,9 @@ class DatasetMerged(InMemoryDataset):
 
 
 class Dataset(InMemoryDataset):
-    def __init__(self, cfg, df, split):
-        self.cfg = cfg
-        self.df = df
-        self.split = split
-        super().__init__(cfg.data_dir)
-        self.load(self.processed_paths[0])
-
-    def processed_file_names(self):
-        return [f'{self.cfg.processed_file_name}__split_{self.split}.pt']
-
-    def process(self):
-        data_list = process_measurements(self.df, self.cfg.sparsify_step_time, self.cfg.num_neighbors, 0)
-
-        self.save(data_list, self.processed_paths[0])
+    def __init__(self, data_list):
+        super().__init__(None)
+        self.data, self.slices = self.collate(data_list)
 
 
 def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_idx):
@@ -286,13 +275,13 @@ def download_pbmc68k(cfg, data_dir):
     )
 
 
-def split_train_val_test(df, train_prec, val_prec, test_prec, rng_seed):
+def split_train_val_test(ds, train_prec, val_prec, test_prec, rng_seed):
     rng = np.random.default_rng(seed=rng_seed)
-    idx = rng.permutation(len(df))
+    idx = rng.permutation(len(ds))
     split_idxs = (len(idx) * np.array([train_prec, 1 - val_prec - test_prec, 1 - test_prec])).astype(int)
     train, _, val, test = np.split(idx, split_idxs)
 
-    return df.iloc[train], df.iloc[val], df.iloc[test]
+    return ds[train], ds[val], ds[test]
 
 
 def get_dataset_df(cfg, rng_seed=0):
@@ -352,8 +341,8 @@ def get_dataset(cfg, rng_seed=0):
         pl.seed_everything(rng_seed, workers=True)
         if not (Path(cfg.data_dir)/'processed').exists():
             df = get_dataset_df(cfg, rng_seed=rng_seed)
-            splits = split_train_val_test(df, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
-            splits = [process_measurements(s, cfg.sparsify_step_time, cfg.num_neighbors, 0) for s in splits]
+            ds = Dataset(process_measurements(df, cfg.sparsify_step_time, cfg.num_neighbors, 0))
+            splits = split_train_val_test(ds, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
         else:
             splits = [0, 0, 0]
             splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
