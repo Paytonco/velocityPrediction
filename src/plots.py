@@ -101,18 +101,22 @@ def iter_runs(cfg, plotters):
 
 def plot_field(ax, data):
     pos, vel = data.poi_pos, data.poi_vel
-    sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=data.poi_t)# c='orange')
+    sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=data.poi_t)
     ax.get_figure().colorbar(sc, ax=ax)
     if hasattr(data, 'poi_vel_pred'):
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['deepskyblue', 'blue'])
         pos2 = torch.cat((pos, pos))
         indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
         vel_pred = torch.cat((vel, data.poi_vel_pred))
-        ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator))
+        ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator), label='Vec')
+        ax.legend(
+            [matplotlib.patches.Patch(color=cmap(i)) for i in [0., 1.]],  # the cmap inputs must be floats!
+            ['True', 'Pred']
+        )
     else:
         ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='deepskyblue')
-    ax.set_xlabel('$x$')
-    ax.set_ylabel('$y$')
+    ax.set_xlabel('$u_1$')
+    ax.set_ylabel('$u_2$')
 
 
 class Plotter:
