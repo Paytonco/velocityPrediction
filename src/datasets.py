@@ -135,7 +135,6 @@ def generate_measurements_scvelo_simulation(cfg):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
@@ -160,7 +159,6 @@ def download_bonemarrow(cfg, data_dir):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
@@ -182,7 +180,6 @@ def download_dentategyrus(cfg, data_dir):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
@@ -218,7 +215,6 @@ def download_forebrain(cfg, data_dir):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
@@ -240,7 +236,6 @@ def download_pancreas(cfg, data_dir):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
@@ -262,7 +257,6 @@ def download_pbmc68k(cfg, data_dir):
     scvelo.pp.moments(adata)
     scvelo.tl.velocity(adata, mode='stochastic')
 
-    # must call velocity_pseudotime before velocity_graph
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 

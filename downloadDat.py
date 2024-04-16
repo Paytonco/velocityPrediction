@@ -81,7 +81,6 @@ def get_csvs(ds_func, basis_dim=2):
     scv.pp.moments(adata)
     scv.tl.velocity(adata, mode='stochastic')
 
-# must call velocity_pseudotime before velocity_graph
     scv.tl.velocity_graph(adata)
     scv.tl.velocity_pseudotime(adata)
 
