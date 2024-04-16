@@ -48,23 +48,23 @@ class Runner(pl.LightningModule):
         ], collate_fn=lambda x: x[0])
 
     def training_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
         loss = self.loss(out, batch.poi_vel)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
         loss = self.loss(out, batch.poi_vel)
         return loss
 
     def test_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
         loss = self.loss(out, batch.poi_vel)
         return loss
 
     def predict_step(self, split_data, batch_idx):
         split, batch = split_data
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch.batch)
+        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
         batch.poi_vel_pred = out
         batch._slice_dict['poi_vel_pred'] = batch._slice_dict['poi_vel']
         batch._inc_dict['poi_vel_pred'] = batch._inc_dict['poi_vel']

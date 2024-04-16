@@ -1,0 +1,6 @@
+name: Second
+bias: true
+hidden:
+  dim: 10
+  layers: 3
+activation: Tanh
