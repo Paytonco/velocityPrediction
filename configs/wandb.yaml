@@ -1,5 +1,5 @@
 entity: taost
 project: rna_vel_pred
 run: null
-dir: .
+dir: ${oc.select:..data_dir,.}
 tags: []

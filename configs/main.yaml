@@ -14,8 +14,6 @@ out_dir: ${.root_dir}/../../out/rna_vel_pred
 run_dir: ${.out_dir}/runs
 data_dir: ${.root_dir}/data
 rng_seed: 0
-wandb:
-  dir: ${..out_dir}
 trainer:
   copy_saved_cfg:
     - dataset
