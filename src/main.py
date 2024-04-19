@@ -105,6 +105,10 @@ def main(cfg):
             run_saved_cfg = OmegaConf.create(wandbruns.query_runs(cfg.wandb.entity, cfg.wandb.project, {'name': cfg.wandb.run}, {}, {})[0].config)
             for k in cfg.trainer.copy_saved_cfg:
                 cfg[k] = run_saved_cfg[k]
+            if 'dataset' not in cfg.trainer.copy_saved_cfg:
+                if cfg.get('dataset') is None:
+                    raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
+                cfg_normalize_dataset(cfg)
         else:
             if cfg.get('dataset') is None:
                 raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
@@ -115,7 +119,8 @@ def main(cfg):
             dataset_summary['data_dir'].append(ds.get('data_dir', ''))
             dataset_summary['num_neighbors'].append(ds.num_neighbors)
             dataset_summary['sparsify_step_time'].append(ds.sparsify_step_time)
-            dataset_summary['umap_num_components'].append(ds.umap.n_components)
+            if ds.name == 'SCVeloSaved':
+                dataset_summary['umap_num_components'].append(ds.umap.n_components)
         cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}
         # normalize dataset list in by sorting by name, then sorting by path
         # cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
