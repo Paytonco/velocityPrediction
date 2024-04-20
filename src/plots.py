@@ -4,6 +4,7 @@ import hydra
 import omegaconf
 from omegaconf import OmegaConf
 import pandas as pd
+import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 import torch_geometric as tg
@@ -101,22 +102,28 @@ def iter_runs(cfg, plotters):
 
 def plot_field(ax, data):
     pos, vel = data.poi_pos, data.poi_vel
-    sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=data.poi_t)
-    ax.get_figure().colorbar(sc, ax=ax)
     if hasattr(data, 'poi_vel_pred'):
-        cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['deepskyblue', 'blue'])
+        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred)).pow(2).sum(1) / 2
+        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis')
+        cbar = ax.get_figure().colorbar(sc, ax=ax)  # , ticks=[0, 2], format=matplotlib.ticker.FixedFormatter(['0', '2']), label=r'$1 - \cos(\theta)$')
+        cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['tab:orange', 'deepskyblue'])
         pos2 = torch.cat((pos, pos))
         indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
-        vel_pred = torch.cat((vel, data.poi_vel_pred))
+        poi_vel_pred = data.poi_vel_pred
+        # vel, poi_vel_pred = utils.normalize(vel), utils.normalize(poi_vel_pred)
+        vel_pred = torch.cat((vel, poi_vel_pred))
         ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator), label='Vec')
         ax.legend(
             [matplotlib.patches.Patch(color=cmap(i)) for i in [0., 1.]],  # the cmap inputs must be floats!
             ['True', 'Pred']
         )
     else:
-        ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='deepskyblue')
-    ax.set_xlabel('$u_1$')
-    ax.set_ylabel('$u_2$')
+        cmap = matplotlib.colormaps['Wistia']
+        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', facecolors='none', edgecolors='black')
+        ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='tab:orange')
+    ax.set_xlabel('$x$')
+    ax.set_ylabel('$y$')
+    ax.margins(.1)
 
 
 class Plotter:
@@ -265,8 +272,10 @@ def main(cfg):
         for k, v in cfg.dataset.items():
             for s, ds in zip(('train', 'val', 'test'), map(datasets.DatasetMerged, zip(datasets.get_dataset(v, rng_seed=cfg.rng_seed)))):
                 fig, ax = plt.subplots()
-                ds = ds.shuffle()
-                data = next(iter(DataLoader(ds, batch_size=len(ds))))
+                with pl.utilities.seed.isolate_rng():
+                    pl.seed_everything(cfg.rng_seed, workers=True)
+                    ds = ds.shuffle()
+                data = next(iter(DataLoader(ds, batch_size=len(ds) // 64)))
                 plot_field(ax, data)
                 fig.savefig(plot_dir/f'{k}_{s}.{cfg.fmt}', format=cfg.fmt, bbox_inches='tight', pad_inches=.03)
                 plt.close(fig)
