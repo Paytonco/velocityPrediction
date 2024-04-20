@@ -28,7 +28,12 @@ class Runner(pl.LightningModule):
         return torch.optim.AdamW(self.model.parameters())
 
     def loss(self, input, target):
-        return F.mse_loss(input, target)
+        input_norm = input.pow(2).sum(1, keepdim=True)
+        # mse_loss \in [0, 4]. If the model outputs at least one zero vector,
+        # loss_zero_norm will be at least 4; otherwise, it is zero.
+        # Sum reduce is used because a mean reduce could be less than 4.
+        loss_zero_norm = 4*(1 - input_norm).pow(2).sum()
+        return F.mse_loss(input, target) + loss_zero_norm
 
     def train_dataloader(self):
         ds = self.splits['train']
