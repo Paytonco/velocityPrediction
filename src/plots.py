@@ -57,20 +57,21 @@ def get_runs(cfg):
         for k, v in run_datasets.items():
             v.load(run_dir/f'pred_{k}.pt')
 
-        for k in run_datasets:
-            data = run_datasets[k]._data
-            dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
-            for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
-                data[f'{k}_2d'] = data[k][:, dims_most_important]
+        if cfg.use_umap_2d:
+            for k in run_datasets:
+                data = run_datasets[k]._data
+                dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
+                for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
+                    data[k] = data[k][:, dims_most_important]
 
-            # adata = adata_from_pos(data.poi_pos.numpy())
-            # poi_pos = adata.obsm['X_umap']
-            # poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
-            # poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
-            #
-            # data.poi_pos = torch.tensor(poi_pos)
-            # data.poi_vel = utils.normalize(torch.tensor(poi_vel))
-            # data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
+                # adata = adata_from_pos(data.poi_pos.numpy())
+                # poi_pos = adata.obsm['X_umap']
+                # poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
+                # poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
+                #
+                # data.poi_pos = torch.tensor(poi_pos)
+                # data.poi_vel = utils.normalize(torch.tensor(poi_vel))
+                # data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
 
         yield r.id, run_dir, run_cfg, run_datasets
 
@@ -101,15 +102,16 @@ def iter_runs(cfg, plotters):
 
 
 def plot_field(ax, data):
-    pos, vel = data.poi_pos_2d, data.poi_vel_2d
+    pos, vel = data.poi_pos, data.poi_vel
     if hasattr(data, 'poi_vel_pred'):
-        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred_2d)).pow(2).sum(1) / 2
-        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis')
+        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred)).pow(2).sum(1) / 2
+        # sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', norm=matplotlib.colors.Normalize(vmin=0, vmax=2))
+        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', vmin=0, vmax=2)
         cbar = ax.get_figure().colorbar(sc, ax=ax)  # , ticks=[0, 2], format=matplotlib.ticker.FixedFormatter(['0', '2']), label=r'$1 - \cos(\theta)$')
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['tab:orange', 'deepskyblue'])
         pos2 = torch.cat((pos, pos))
         indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
-        poi_vel_pred = data.poi_vel_pred_2d
+        poi_vel_pred = data.poi_vel_pred
         # vel, poi_vel_pred = utils.normalize(vel), utils.normalize(poi_vel_pred)
         vel_pred = torch.cat((vel, poi_vel_pred))
         ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator), label='Vec')

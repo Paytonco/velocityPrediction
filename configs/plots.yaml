@@ -20,6 +20,7 @@ wandb:
 fmt: png
 
 run_ids: []
+use_umap_2d: true
 plot:
   context: poster
   style: white
