@@ -6,7 +6,6 @@ from omegaconf import OmegaConf
 import pandas as pd
 import lightning.pytorch as pl
 import torch
-import torch.nn.functional as F
 import torch_geometric as tg
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import InMemoryDataset
@@ -19,6 +18,7 @@ from anndata import AnnData
 import scvelo
 
 import datasets
+import main as trainer_main
 import utils
 import wandbruns
 
@@ -166,7 +166,7 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
-        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
         df = pd.DataFrame(dict(
             split=split,
             sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time,
@@ -181,11 +181,10 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
         df = pd.concat(self.mse_dfs).reset_index(drop=True)
         for s in df['split'].unique():
             pivot = df[df['split'] == s].pivot(index='num_neighbors', columns='sparsifier_step', values='mse')
-            fig, ax = plt.subplots(figsize=(11, 6))
+            fig, ax = plt.subplots(figsize=(7.04, 5.28))
             sns.heatmap(
                 data=pivot,
-                annot=True,
-                fmt='.2f',
+                vmin=.02, vmax=.05,
                 cmap='viridis',
                 linewidth=.5,
                 ax=ax
@@ -210,7 +209,7 @@ class MSESparseStep(Plotter):
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
-        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
         df = pd.DataFrame(dict(
             split=split,
             sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time,
@@ -250,7 +249,7 @@ class MSENeighborSet(Plotter):
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
-        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
         df = pd.DataFrame(dict(
             split=split,
             num_neighbors=self.run_cfg.dataset[0].num_neighbors,
