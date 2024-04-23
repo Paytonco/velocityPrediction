@@ -50,6 +50,10 @@ def filters_tags(tags):
     return {'tags': {'$in': tags}}, {}, {}
 
 
+def filters_sweep(sweep):
+    return {'sweep': sweep}, {}, {}
+
+
 @hydra.main(version_base=None, config_path='../configs', config_name='runs')
 def main(cfg):
     if cfg.verbose:
@@ -62,6 +66,8 @@ def main(cfg):
             a, b, c = filters_job_type(cfg.job_type)
         elif name == 'tags' and len(cfg.tags) > 0:
             a, b, c = filters_tags(OmegaConf.to_container(cfg.tags))
+        elif name == 'sweep':
+            a, b, c = filters_sweep(cfg.sweep)
         global_filters.update(a)
         config.update(b)
         summary_metrics.update(c)

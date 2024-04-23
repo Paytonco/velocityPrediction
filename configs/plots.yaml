@@ -33,3 +33,5 @@ plot:
     sparsifier:
       step:
         do: false
+    sparsifier_neighbor_set_heatmap:
+      do: false

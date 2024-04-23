@@ -61,7 +61,7 @@ def get_runs(cfg):
             data = run_datasets[k]._data
             dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
             for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
-                data[k] = data[k][:, dims_most_important]
+                data[f'{k}_2d'] = data[k][:, dims_most_important]
 
             # adata = adata_from_pos(data.poi_pos.numpy())
             # poi_pos = adata.obsm['X_umap']
@@ -101,15 +101,15 @@ def iter_runs(cfg, plotters):
 
 
 def plot_field(ax, data):
-    pos, vel = data.poi_pos, data.poi_vel
+    pos, vel = data.poi_pos_2d, data.poi_vel_2d
     if hasattr(data, 'poi_vel_pred'):
-        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred)).pow(2).sum(1) / 2
+        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred_2d)).pow(2).sum(1) / 2
         sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis')
         cbar = ax.get_figure().colorbar(sc, ax=ax)  # , ticks=[0, 2], format=matplotlib.ticker.FixedFormatter(['0', '2']), label=r'$1 - \cos(\theta)$')
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['tab:orange', 'deepskyblue'])
         pos2 = torch.cat((pos, pos))
         indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
-        poi_vel_pred = data.poi_vel_pred
+        poi_vel_pred = data.poi_vel_pred_2d
         # vel, poi_vel_pred = utils.normalize(vel), utils.normalize(poi_vel_pred)
         vel_pred = torch.cat((vel, poi_vel_pred))
         ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator), label='Vec')
@@ -153,6 +153,50 @@ class VelPred(Plotter):
         plot_field(ax, data)
         fig.savefig(f'{self.run_dir}/pred_{split}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
         plt.close(fig)
+
+
+class MSESparseStepNeighborSetHeatmap(Plotter):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.mse_dfs = []
+
+    def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_id = run_id
+        self.run_cfg = run_cfg
+
+    def iter_split(self, split, ds):
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        df = pd.DataFrame(dict(
+            split=split,
+            sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time,
+            num_neighbors=self.run_cfg.dataset[0].num_neighbors,
+            mse=mse.item(),
+            source=self.run_id,
+            umap_num_components=self.run_cfg.dataset_summary.umap_num_components,
+        ), index=[0])
+        self.mse_dfs.append(df)
+
+    def end_iter_run(self):
+        df = pd.concat(self.mse_dfs).reset_index(drop=True)
+        for s in df['split'].unique():
+            pivot = df[df['split'] == s].pivot(index='num_neighbors', columns='sparsifier_step', values='mse')
+            fig, ax = plt.subplots(figsize=(11, 6))
+            sns.heatmap(
+                data=pivot,
+                annot=True,
+                fmt='.2f',
+                cmap='viridis',
+                linewidth=.5,
+                ax=ax
+            )
+            ax.set_xlabel('Num. Neighbors')
+            ax.set_ylabel('Time Sparsify Step')
+            ax.tick_params(axis='x', labelrotation=20)
+            ax.tick_params(axis='y', labelrotation=20)
+            fig.tight_layout()
+            fig.savefig(f'{self.cfg.plot_dir}/mse_sparsifier_step_neighbor_set_heatmap_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
+            plt.close(fig)
 
 
 class MSESparseStep(Plotter):
@@ -261,6 +305,8 @@ def main(cfg):
         plotters.append(MSENeighborSet(cfg))
     if cfg.plot.mse.sparsifier.step.do:
         plotters.append(MSESparseStep(cfg))
+    if cfg.plot.mse.sparsifier_neighbor_set_heatmap.do:
+        plotters.append(MSESparseStepNeighborSetHeatmap(cfg))
 
     iter_runs(cfg, plotters)
 

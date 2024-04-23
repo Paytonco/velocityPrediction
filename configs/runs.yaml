@@ -6,6 +6,8 @@ filters:
   - cfg_main
   - job_type
   - tags
+  - sweep
 verbose: false
 job_type: fit
 tags: []
+sweep: xw53zexo
