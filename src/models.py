@@ -39,6 +39,18 @@ class First(nn.Module):
         )
 
 
+class FirstDistance(First):
+    def forward(self, t, pos, poi_t, poi_pos, batch):
+        batch = batch.batch
+        diff_t = torch.sign(t - poi_t[batch])
+        diff_pos = pos - poi_pos[batch]
+        r = diff_pos.pow(2).sum(1).sqrt()
+        weights = self.weighter(torch.stack((diff_t, r), dim=1))
+        return utils.normalize(
+            tg.nn.global_add_pool(weights * utils.normalize(diff_pos), batch)
+        )
+
+
 class Second(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -84,6 +96,8 @@ def get_model(cfg, rng_seed=0):
         pl.seed_everything(rng_seed, workers=True)
         if cfg.name == 'First':
             return First(cfg)
+        elif cfg.name == 'FirstDistance':
+            return FirstDistance(cfg)
         elif cfg.name == 'Second':
             return Second(cfg)
         else:
