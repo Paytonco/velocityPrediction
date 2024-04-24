@@ -151,7 +151,8 @@ class VelPred(Plotter):
 
     def iter_split(self, split, ds):
         fig, ax = plt.subplots()
-        data = next(iter(DataLoader(ds, batch_size=len(ds) // 4)))
+        batch_size = len(ds) if split == 'test' else len(ds) // 4
+        data = next(iter(DataLoader(ds, batch_size=batch_size)))
         plot_field(ax, data)
         fig.savefig(f'{self.run_dir}/pred_{split}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
         plt.close(fig)
