@@ -121,7 +121,8 @@ def plot_field(ax, data):
         )
     else:
         cmap = matplotlib.colormaps['Wistia']
-        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', facecolors='none', edgecolors='black')
+        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', facecolors='none', c=data.poi_t, cmap='viridis', vmin=0, vmax=1)
+        cbar = ax.get_figure().colorbar(sc, ax=ax)
         ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='tab:orange')
     ax.set_xlabel('$x$')
     ax.set_ylabel('$y$')
@@ -323,7 +324,8 @@ def main(cfg):
                 with pl.utilities.seed.isolate_rng():
                     pl.seed_everything(cfg.rng_seed, workers=True)
                     ds = ds.shuffle()
-                data = next(iter(DataLoader(ds, batch_size=len(ds) // 64)))
+                batch_size = len(ds) if s == 'test' else len(ds)
+                data = next(iter(DataLoader(ds, batch_size=batch_size)))
                 plot_field(ax, data)
                 fig.savefig(plot_dir/f'{k}_{s}.{cfg.fmt}', format=cfg.fmt, bbox_inches='tight', pad_inches=.03)
                 plt.close(fig)
