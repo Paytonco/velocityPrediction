@@ -1,0 +1,27 @@
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+
+parameters:
+  dataset.1.num_neighbors:
+    values: [4, 6, 8, 10, 12, 14, 16, 18, 20]
+  dataset.1.sparsify_step_time:
+    values: [23, 34, 45, 57, 68, 79, 90, 102, 113]
+
+# [ 22.61688312  33.92532468  45.23376623  56.54220779  67.85064935 79.15909091  90.46753247 101.77597403 113.08441558]
+
+command:
+  - ${env}
+  - CUDA_VISIBLE_DEVICES=6
+  - python3
+  - src/main.py
+  - model=First
+  - model.hidden.layers=9
+  - model.hidden.dim=7
+  - model.bias=false
+  - model.activation=ReLU
+  - +dataset@dataset.1=SCVeloSaved
+  - dataset.1.data_subdir=forebrain
+  - dataset.1.umap.n_components=49
+  - ${args_no_hyphens}
