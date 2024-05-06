@@ -7,10 +7,10 @@ hydra:
 defaults:
   - _self_
 
-root_dir: /home/reepoi/GitHub/velocityPrediction
+root_dir: /root/workspace/GitHub/velocityPrediction
 out_dir: ${.root_dir}/../../out/rna_vel_pred
 plot_dir: ${.out_dir}/plots
-data_dir: ${.root_dir}/data
+data_dir: ${.out_dir}/data_redesign
 rng_seed: 0
 wandb:
   entity: taost
@@ -29,11 +29,6 @@ plot:
   vel_pred:
     do: false
   mse:
-    neighbor_set:
-      do: false
-    sparsifier:
-      step:
-        do: false
     sparsifier_neighbor_set_heatmap:
       do: false
     umap_dimension:
