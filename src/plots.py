@@ -3,9 +3,11 @@ from pathlib import Path
 import hydra
 import omegaconf
 from omegaconf import OmegaConf
+import numpy as np
 import pandas as pd
 import lightning.pytorch as pl
 import torch
+import torch.nn.functional as F
 import torch_geometric as tg
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import InMemoryDataset
@@ -53,25 +55,54 @@ def get_runs(cfg):
         run_cfg = OmegaConf.create(r.config)
         run_dir = Path(cfg.out_dir)/'runs'/r.id
 
-        run_datasets = {s: InMemoryDataset(run_dir) for s in ('train', 'val', 'test')}
-        for k, v in run_datasets.items():
-            v.load(run_dir/f'pred_{k}.pt')
+        if r.job_type == 'fit':
+            run_datasets = {}
+        else:
+            run_datasets = {s: InMemoryDataset(run_dir) for s in ('train', 'val', 'test')}
+            for k, v in run_datasets.items():
+                v.load(run_dir/f'pred_{k}.pt')
 
-        if cfg.use_umap_2d:
-            for k in run_datasets:
-                data = run_datasets[k]._data
-                dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
-                for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
-                    data[k] = data[k][:, dims_most_important]
+            if cfg.use_umap_2d:
+                # training_datasets = []
+                # for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
+                #     OmegaConf.update(v, 'umap.n_components', 2)
+                #     OmegaConf.update(v, 'csv.name_suffix', 'umap_n_components_2')
+                #     training_datasets.append(datasets.get_dataset(v, rng_seed=run_cfg.rng_seed))
+                # training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
+                # training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
 
-                # adata = adata_from_pos(data.poi_pos.numpy())
-                # poi_pos = adata.obsm['X_umap']
-                # poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
-                # poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
-                #
-                # data.poi_pos = torch.tensor(poi_pos)
-                # data.poi_vel = utils.normalize(torch.tensor(poi_vel))
-                # data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
+                for k in run_datasets:
+                    data = run_datasets[k]._data
+                    # training_data = training_datasets[k]._data
+
+                    dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
+                    for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
+                    # for k in ('poi_vel', 'poi_vel_pred'):
+                        data[k] = data[k][:, dims_most_important]
+
+                    # data_df = pd.DataFrame(dict(
+                    #     idx=range(data.poi_measurement_id.size(0)),
+                    #     measurement_id=data.poi_measurement_id.numpy()
+                    # ))
+                    # training_data_df = pd.DataFrame(dict(
+                    #     idx=range(training_data.poi_measurement_id.size(0)),
+                    #     measurement_id=training_data.poi_measurement_id.numpy()
+                    # ))
+                    # mapping = pd.merge(
+                    #     data_df, training_data_df,
+                    #     on='measurement_id', suffixes=('_data', '_training_data')
+                    # )  # preserves order of data_df's rows
+                    #
+                    # data.poi_pos = training_data.poi_pos[mapping['idx_training_data']]
+
+                    # adata = adata_from_pos(data.poi_pos.numpy())
+                    # poi_pos = adata.obsm['X_umap']
+                    # poi_vel = compute_adata_velocity(adata, data.poi_vel.numpy())
+                    # poi_vel_pred = compute_adata_velocity(adata, data.poi_vel_pred.numpy())
+                    #
+                    # data.poi_pos = torch.tensor(poi_pos)
+                    # data.poi_vel = utils.normalize(torch.tensor(poi_vel))
+                    # data.poi_vel_pred = utils.normalize(torch.tensor(poi_vel_pred))
 
         yield r.id, run_dir, run_cfg, run_datasets
 
@@ -104,6 +135,7 @@ def iter_runs(cfg, plotters):
 def plot_field(ax, data):
     pos, vel = data.poi_pos, data.poi_vel
     if hasattr(data, 'poi_vel_pred'):
+    # if False:
         color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred)).pow(2).sum(1) / 2
         # sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', norm=matplotlib.colors.Normalize(vmin=0, vmax=2))
         sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', vmin=0, vmax=2)
@@ -163,6 +195,12 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.mse_dfs = []
+        self.dataset_sizes = {
+            'pancreas': 3696,
+            'bonemarrow': 5780,
+            'dentategyrus': 2930,
+            'forebrain': 20898
+        }
 
     def iter_run(self, run_id, run_dir, run_cfg):
         self.run_id = run_id
@@ -170,10 +208,11 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
-        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
+        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        data_subdir = self.run_cfg.dataset_summary.data_dir.split('/')[-1]
         df = pd.DataFrame(dict(
             split=split,
-            sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time,
+            sparsifier_step=self.run_cfg.dataset[0].sparsify_step_time / self.dataset_sizes[data_subdir],
             num_neighbors=self.run_cfg.dataset[0].num_neighbors,
             mse=mse.item(),
             source=self.run_id,
@@ -184,22 +223,98 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
     def end_iter_run(self):
         df = pd.concat(self.mse_dfs).reset_index(drop=True)
         for s in df['split'].unique():
-            pivot = df[df['split'] == s].pivot(index='num_neighbors', columns='sparsifier_step', values='mse')
+            pivot = df[df['split'] == s].pivot(index='sparsifier_step', columns='num_neighbors', values='mse')
+            print(f'Pivot of {s = }')
+            print(pivot)
             fig, ax = plt.subplots(figsize=(7.04, 5.28))
-            sns.heatmap(
-                data=pivot,
-                vmin=.02, vmax=.05,
+            xx, yy = np.meshgrid(pivot.columns, pivot.index)
+
+            heatmap = ax.pcolor(
+                xx, yy, pivot.to_numpy(),
                 cmap='viridis',
-                linewidth=.5,
-                ax=ax
+                vmin=.01, vmax=.04,
+                linewidths=.2,
+                edgecolors='white'
             )
+            cbar = fig.colorbar(heatmap, ax=ax)
+            cbar.outline.set_visible(False)
+
+            ax.set_frame_on(False)
+            ax.set_xticks(pivot.columns)
+            #ax.set_yticks(pivot.index, pivot.index.to_series().round(1))
+            ax.set_yticks(pivot.index.to_series().round(4))
+            formatter = matplotlib.ticker.ScalarFormatter(useMathText=True)
+            formatter.set_powerlimits((-3, -3))
+            formatter.set_scientific(True)
+            ax.yaxis.set_major_formatter(formatter)
+
             ax.set_xlabel('Num. Neighbors')
-            ax.set_ylabel('Time Sparsify Step')
-            ax.tick_params(axis='x', labelrotation=20)
+            ax.set_ylabel('Sparsity')
+            ax.tick_params(axis='x', labelrotation=-20)
             ax.tick_params(axis='y', labelrotation=20)
             fig.tight_layout()
-            fig.savefig(f'{self.cfg.plot_dir}/mse_sparsifier_step_neighbor_set_heatmap_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
+            fig.savefig(f'{self.cfg.plot_dir}/mse_sparsifier_step_neighbor_set_heatmap_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.06)
             plt.close(fig)
+
+
+class MSEUmapDimension(Plotter):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.mse_dfs = []
+        self.labels_dict = {
+            'pancreas': 'Pancreas',
+            'dentategyrus': 'Dentate Gyrus',
+            'forebrain': 'Forebrain',
+            'bonemarrow': 'Bone Marrow'
+        }
+
+    def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_id = run_id
+        self.run_cfg = run_cfg
+        # training_run = wandbruns.query_runs(self.cfg.wandb.entity, self.cfg.wandb.project, {'name': run_id}, {}, {})[0]
+        # training_history = training_run.history(samples=10000)
+        # val_loss = training_history['val_loss'].dropna().to_numpy()[-1]
+        # df = pd.DataFrame(dict(
+        #     mse=val_loss,
+        #     source=self.run_id,
+        #     dataset=self.labels_dict[self.run_cfg.dataset_summary.data_dir.split('/')[-1]],
+        #     umap_num_components=int(self.run_cfg.dataset_summary.umap_num_components),
+        # ), index=[0])
+        # self.mse_dfs.append(df)
+
+    def iter_split(self, split, ds):
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        data_subdir = self.run_cfg.dataset_summary.data_dir.split('/')[-1]
+        df = pd.DataFrame(dict(
+            split=split,
+            mse=mse.item(),
+            source=self.run_id,
+            dataset=self.labels_dict[data_subdir],
+            umap_num_components=int(self.run_cfg.dataset_summary.umap_num_components),
+        ), index=[0])
+        self.mse_dfs.append(df)
+
+    def end_iter_run(self):
+        df = pd.concat(self.mse_dfs).reset_index(drop=True)
+        for s in df['split'].unique():
+            fig, ax = plt.subplots()
+            # ax.set_yscale(matplotlib.scale.LogScale(ax, base=4))
+            sns.lineplot(
+                df[df['split'] == s],
+                x='umap_num_components', y='mse',
+                hue='dataset',
+                err_style='bars',
+                ax=ax,
+            )
+            ax.set_xlabel('Dimension')
+            ax.set_ylabel('Loss')
+            ax.set_ylim(0, .6)
+            ax.get_legend().set_title(None)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(*zip(*sorted(zip(handles, labels), key=lambda t: t[1])), loc='upper right')
+            # sns.move_legend(ax, 'upper right')
+            fig.savefig(f'{self.cfg.plot_dir}/mse_umap_dimension_{s}.{self.cfg.fmt}', format=self.cfg.fmt, bbox_inches='tight', pad_inches=.03)
 
 
 class MSESparseStep(Plotter):
@@ -308,6 +423,8 @@ def main(cfg):
         plotters.append(MSENeighborSet(cfg))
     if cfg.plot.mse.sparsifier.step.do:
         plotters.append(MSESparseStep(cfg))
+    if cfg.plot.mse.umap_dimension.do:
+        plotters.append(MSEUmapDimension(cfg))
     if cfg.plot.mse.sparsifier_neighbor_set_heatmap.do:
         plotters.append(MSESparseStepNeighborSetHeatmap(cfg))
 
