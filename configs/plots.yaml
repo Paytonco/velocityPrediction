@@ -20,7 +20,7 @@ wandb:
 fmt: png
 
 run_ids: []
-use_umap_2d: true
+use_umap_2d: false
 plot:
   context: poster
   style: white
@@ -35,4 +35,6 @@ plot:
       step:
         do: false
     sparsifier_neighbor_set_heatmap:
+      do: false
+    umap_dimension:
       do: false
