@@ -7,15 +7,18 @@ parameters:
   dataset.1.num_neighbors:
     values: [4, 6, 8, 10, 12, 14, 16, 18, 20]
   dataset.1.sparsify_step_time:
-    values: [3, 5, 6, 8, 10, 11, 13, 14, 16]
+    values: [4, 6, 8, 10, 12, 14, 16, 18, 20]
+    # values: [3, 5, 6, 8, 10, 11, 13, 14, 16]
 
 # [ 3.17099567  4.75649351  6.34199134  7.92748918  9.51298701 11.09848485 12.68398268 14.26948052 15.85497835]
 
 command:
   - ${env}
-  - CUDA_VISIBLE_DEVICES=7
+  - CUDA_VISIBLE_DEVICES=1
   - python3
   - src/main.py
+  - trainer.max_epochs=30
+  - trainer.check_val_every_n_epoch=5
   - model=First
   - model.hidden.layers=9
   - model.hidden.dim=7
@@ -23,5 +26,5 @@ command:
   - model.activation=ReLU
   - +dataset@dataset.1=SCVeloSaved
   - dataset.1.data_subdir=dentategyrus
-  - dataset.1.umap.n_components=49
+  - dataset.1.umap.n_components=17
   - ${args_no_hyphens}

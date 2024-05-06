@@ -7,15 +7,20 @@ parameters:
   dataset.1.num_neighbors:
     values: [4, 6, 8, 10, 12, 14, 16, 18, 20]
   dataset.1.sparsify_step_time:
-    values: [4, 6, 8, 10, 12, 14, 16, 18, 20]
+    values: [5, 8, 10, 13, 15, 18, 20, 23, 25]
 
+# [ 5.04573379  7.56860068 10.09146758 12.61433447 15.13720137 17.66006826 20.18293515 22.70580205 25.22866894]
+
+# Old sparsity relative to Pancreas dataset size
 # [0.00108225 0.00162338 0.0021645  0.00270563 0.00324675 0.00378788 0.004329   0.00487013 0.00541126]
 
 command:
   - ${env}
-  - CUDA_VISIBLE_DEVICES=3
+  - CUDA_VISIBLE_DEVICES=2
   - python3
   - src/main.py
+  - trainer.max_epochs=30
+  - trainer.check_val_every_n_epoch=5
   - model=First
   - model.hidden.layers=9
   - model.hidden.dim=7
@@ -23,5 +28,5 @@ command:
   - model.activation=ReLU
   - +dataset@dataset.1=SCVeloSaved
   - dataset.1.data_subdir=pancreas
-  - dataset.1.umap.n_components=49
+  - dataset.1.umap.n_components=17
   - ${args_no_hyphens}
