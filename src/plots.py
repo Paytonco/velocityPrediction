@@ -308,8 +308,7 @@ class MSEUmapDimension(Plotter):
                 ax=ax,
             )
             ax.set_xlabel('Dimension')
-            ax.set_ylabel('Loss')
-            ax.set_ylim(0, .6)
+            ax.set_ylabel(r'$\mathcal{L}_{\mathrm{MSE}}$')
             ax.get_legend().set_title(None)
             handles, labels = ax.get_legend_handles_labels()
             ax.legend(*zip(*sorted(zip(handles, labels), key=lambda t: t[1])), loc='upper right')
