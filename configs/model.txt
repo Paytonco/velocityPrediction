@@ -1,0 +1,4 @@
+model.hidden.layers=9
+model.hidden.dim=7
+model.bias=false
+model.activation=ReLU

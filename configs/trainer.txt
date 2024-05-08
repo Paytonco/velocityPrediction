@@ -1,0 +1,2 @@
+trainer.max_epochs=30
+trainer.check_val_every_n_epoch=5

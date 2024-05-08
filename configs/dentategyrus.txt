@@ -1,0 +1,5 @@
++dataset@dataset.dentategyrus=SCVeloSaved
+dataset.dentategyrus.umap.n_components=17
+dataset.dentategyrus.data_subdir=dentategyrus
+dataset.dentategyrus.num_neighbors=20
+dataset.dentategyrus.sparsify_step_time=14

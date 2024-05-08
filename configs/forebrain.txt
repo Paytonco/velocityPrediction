@@ -1,0 +1,5 @@
++dataset@dataset.forebrain=SCVeloSaved
+dataset.forebrain.umap.n_components=17
+dataset.forebrain.data_subdir=forebrain
+dataset.forebrain.num_neighbors=20
+dataset.forebrain.sparsify_step_time=100

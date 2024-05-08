@@ -1,0 +1,5 @@
++dataset@dataset.pancreas=SCVeloSaved
+dataset.pancreas.umap.n_components=17
+dataset.pancreas.data_subdir=pancreas
+dataset.pancreas.num_neighbors=20
+dataset.pancreas.sparsify_step_time=18
