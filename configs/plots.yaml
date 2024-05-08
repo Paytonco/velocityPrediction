@@ -33,3 +33,5 @@ plot:
       do: false
     umap_dimension:
       do: false
+    loss_table:
+      do: false

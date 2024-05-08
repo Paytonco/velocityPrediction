@@ -48,6 +48,12 @@ def compute_adata_velocity(adata, vel):
     return adata.obsm['velocity_umap']
 
 
+def umap_top_2_dimensions(data, keys=('poi_pos', 'poi_vel', 'poi_vel_pred')):
+    dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
+    for k in keys:
+        data[k] = data[k][:, dims_most_important]
+
+
 def get_runs(cfg):
     rs = wandbruns.query_runs(cfg.wandb.entity, cfg.wandb.project,
                          {'$or': [{'name': i} for i in cfg.run_ids]}, {}, {})
@@ -62,7 +68,7 @@ def get_runs(cfg):
             for k, v in run_datasets.items():
                 v.load(run_dir/f'pred_{k}.pt')
 
-            if cfg.use_umap_2d:
+            # if cfg.use_umap_2d:
                 # training_datasets = []
                 # for v in OmegaConf.masked_copy(run_cfg, 'dataset').dataset:
                 #     OmegaConf.update(v, 'umap.n_components', 2)
@@ -71,14 +77,10 @@ def get_runs(cfg):
                 # training_datasets = map(datasets.DatasetMerged, zip(*training_datasets))
                 # training_datasets = {k: s for k, s in zip(('train', 'val', 'test'), training_datasets)}
 
-                for k in run_datasets:
-                    data = run_datasets[k]._data
+                # for k in run_datasets:
+                    # data = run_datasets[k]._data
                     # training_data = training_datasets[k]._data
-
-                    dims_most_important = data.poi_pos.var(0, correction=0).topk(2).indices
-                    for k in ('poi_pos', 'poi_vel', 'poi_vel_pred'):
-                    # for k in ('poi_vel', 'poi_vel_pred'):
-                        data[k] = data[k][:, dims_most_important]
+                    # umap_top_2_dimensions(data)
 
                     # data_df = pd.DataFrame(dict(
                     #     idx=range(data.poi_measurement_id.size(0)),
@@ -133,29 +135,33 @@ def iter_runs(cfg, plotters):
 
 
 def plot_field(ax, data):
-    pos, vel = data.poi_pos, data.poi_vel
     if hasattr(data, 'poi_vel_pred'):
-    # if False:
-        color_data = (utils.normalize(vel) - utils.normalize(data.poi_vel_pred)).pow(2).sum(1) / 2
+        # compute colors before possibly projecting to lower dimensions
+        color_data = (data.poi_vel_pred - data.poi_vel).pow(2).sum(1) / 2
+        if data.poi_vel.size(1) >= 2:
+            umap_top_2_dimensions(data)
+            data.poi_vel = utils.normalize(data.poi_vel)
+            data.poi_vel_pred = utils.normalize(data.poi_vel_pred)
         # sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', norm=matplotlib.colors.Normalize(vmin=0, vmax=2))
-        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', c=color_data, cmap='viridis', vmin=0, vmax=2)
+        sc = ax.scatter(data.poi_pos[:, 0], data.poi_pos[:, 1], label='State', c=color_data, cmap='viridis', vmin=0, vmax=2)
         cbar = ax.get_figure().colorbar(sc, ax=ax)  # , ticks=[0, 2], format=matplotlib.ticker.FixedFormatter(['0', '2']), label=r'$1 - \cos(\theta)$')
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list('vel_pred', ['tab:orange', 'deepskyblue'])
-        pos2 = torch.cat((pos, pos))
-        indicator = torch.cat((torch.zeros(pos.size(0)), torch.ones(pos.size(0))))
-        poi_vel_pred = data.poi_vel_pred
+        pos2 = torch.cat((data.poi_pos, data.poi_pos))
+        indicator = torch.cat((torch.zeros(data.poi_pos.size(0)), torch.ones(data.poi_pos.size(0))))
         # vel, poi_vel_pred = utils.normalize(vel), utils.normalize(poi_vel_pred)
-        vel_pred = torch.cat((vel, poi_vel_pred))
+        vel_pred = torch.cat((data.poi_vel, data.poi_vel_pred))
         ax.quiver(pos2[:, 0], pos2[:, 1], vel_pred[:, 0], vel_pred[:, 1], color=cmap(indicator), label='Vec')
         ax.legend(
             [matplotlib.patches.Patch(color=cmap(i)) for i in [0., 1.]],  # the cmap inputs must be floats!
             ['True', 'Pred']
         )
     else:
-        cmap = matplotlib.colormaps['Wistia']
-        sc = ax.scatter(pos[:, 0], pos[:, 1], label='State', facecolors='none', c=data.poi_t, cmap='viridis', vmin=0, vmax=1)
-        cbar = ax.get_figure().colorbar(sc, ax=ax)
-        ax.quiver(pos[:, 0], pos[:, 1], vel[:, 0], vel[:, 1], color='tab:orange')
+        if data.poi_vel.size(1) >= 2:
+            umap_top_2_dimensions(data, keys=('poi_pos', 'poi_vel'))
+            data.poi_vel = utils.normalize(data.poi_vel)
+        sc = ax.scatter(data.poi_pos[:, 0], data.poi_pos[:, 1], label='State', facecolors='none', c=data.poi_t, cmap='viridis', vmin=0, vmax=1)
+        ax.get_figure().colorbar(sc, ax=ax)
+        ax.quiver(data.poi_pos[:, 0], data.poi_pos[:, 1], data.poi_vel[:, 0], data.poi_vel[:, 1], color='tab:orange')
     ax.set_xlabel('$x$')
     ax.set_ylabel('$y$')
     ax.margins(.1)
@@ -176,6 +182,41 @@ class Plotter:
 
     def end_iter_split(self):
         pass
+
+
+class LossTable(Plotter):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.mse_dfs = []
+        self.labels_dict = {
+            'pancreas': 'Pancreas',
+            'dentategyrus': 'Dentate Gyrus',
+            'forebrain': 'Forebrain',
+            'bonemarrow': 'Bone Marrow'
+        }
+
+    def iter_run(self, run_id, run_dir, run_cfg):
+        self.run_id = run_id
+        self.run_cfg = run_cfg
+
+    def iter_split(self, split, ds):
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
+        data_subdir = self.run_cfg.dataset_summary.data_dir.split('/')[-1]
+        df = pd.DataFrame(dict(
+            split=split,
+            mse=mse.item(),
+            dataset=data_subdir,
+            source=self.run_id,
+        ), index=[0])
+        self.mse_dfs.append(df)
+
+    def end_iter_run(self):
+        df = pd.concat(self.mse_dfs).reset_index(drop=True)
+        for s in df['split'].unique():
+            print(s)
+            pivot = df[df['split'] == s].drop(columns='split').set_index('source')
+            print(pivot.to_latex())
 
 
 class VelPred(Plotter):
@@ -208,7 +249,7 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
 
     def iter_split(self, split, ds):
         data = next(iter(DataLoader(ds, batch_size=len(ds))))
-        mse = F.mse_loss(data.poi_vel, data.poi_vel_pred)
+        mse = trainer_main.loss(data.poi_vel, data.poi_vel_pred)
         data_subdir = self.run_cfg.dataset_summary.data_dir.split('/')[-1]
         df = pd.DataFrame(dict(
             split=split,
@@ -232,7 +273,7 @@ class MSESparseStepNeighborSetHeatmap(Plotter):
             heatmap = ax.pcolor(
                 xx, yy, pivot.to_numpy(),
                 cmap='viridis',
-                vmin=.01, vmax=.04,
+                vmin=.05, vmax=.14,
                 linewidths=.2,
                 edgecolors='white'
             )
@@ -342,6 +383,8 @@ def main(cfg):
         plotters.append(MSEUmapDimension(cfg))
     if cfg.plot.mse.sparsifier_neighbor_set_heatmap.do:
         plotters.append(MSESparseStepNeighborSetHeatmap(cfg))
+    if cfg.plot.mse.loss_table.do:
+        plotters.append(LossTable(cfg))
 
     iter_runs(cfg, plotters)
 
@@ -358,6 +401,7 @@ def main(cfg):
                     ds = ds.shuffle()
                 batch_size = len(ds) if s == 'test' else len(ds)
                 data = next(iter(DataLoader(ds, batch_size=batch_size)))
+                umap_top_2_dimensions(data, keys=('poi_pos', 'poi_vel'))
                 plot_field(ax, data)
                 fig.savefig(plot_dir/f'{k}_{s}.{cfg.fmt}', format=cfg.fmt, bbox_inches='tight', pad_inches=.03)
                 plt.close(fig)
