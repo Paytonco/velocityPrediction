@@ -338,12 +338,14 @@ def get_dataset(cfg, rng_seed=0):
         if not (Path(cfg.data_dir)/'processed').exists():
             df = get_dataset_df(cfg, rng_seed=rng_seed)
             ds = Dataset(process_measurements(df, cfg.sparsify_step_time, cfg.num_neighbors, 0))
-            splits = split_train_val_test(ds, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
+            train, val, test = split_train_val_test(ds, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
+            if cfg.train_max_size is not None:
+                train = train[:cfg.train_max_size]
         else:
             splits = [0, 0, 0]
             splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
 
-        return splits
+        return train, val, test
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='main')

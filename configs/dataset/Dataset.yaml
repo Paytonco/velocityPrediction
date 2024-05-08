@@ -12,3 +12,4 @@ splits:
   test: .1
 sparsify_step_time: 10
 reverse_velocities: false
+train_max_size: null
