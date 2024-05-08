@@ -294,6 +294,9 @@ def get_dataset_df(cfg, rng_seed=0):
             data_dir = Path(cfg.data_dir)
             name = data_dir.stem
             csv_path = data_dir/f'{name}__{cfg.csv.name_suffix}.csv'
+            dims = [*range(1, cfg.umap.n_components + 1)]
+            cols_pos = [f'x{i}' for i in dims]
+            cols_vel = [f'v{i}' for i in dims]
             if cfg.csv.load_saved and csv_path.exists():
                 df = pd.read_csv(csv_path)
             else:
@@ -313,18 +316,16 @@ def get_dataset_df(cfg, rng_seed=0):
                     data['t'].to_numpy()[:, None],
                     data['pos'], data['vel']
                 ), axis=1)
-                dims = [*range(1, cfg.umap.n_components + 1)]
                 df = pd.DataFrame(
                     data=data,
-                    columns=[
-                        't',
-                        *(f'x{i}' for i in dims),
-                        *(f'v{i}' for i in dims)
-                    ]
+                    columns=['t', *cols_pos, *cols_vel]
                 )
                 df.to_csv(csv_path, index=False)
         else:
             raise ValueError(f'Unknown dataset: {cfg.name}')
+
+        if cfg.reverse_velocities:
+            df[cols_vel] = -df[cols_vel]
 
         df['measurement_id'] = range(len(df))
 
