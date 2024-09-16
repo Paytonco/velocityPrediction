@@ -95,7 +95,7 @@ Example command that evaluates the pretrained model on the example dataset 10 ne
 
 .. code-block:: bash
 
-   python3 src/main.py trainer.fit=false trainer.pred=true model=PretrainedModel trainer.ckpt=models/pretrained_model.ckpt +dataset@dataset.dataset=Saved dataset.dataset.data_dir=data/example_dataset.csv dataset.dataset.num_neighbors=10 dataset.<dataset-name>.sparsify_step_time=10
+   python3 src/main.py trainer.fit=false trainer.pred=true model=PretrainedModel trainer.ckpt=models/pretrained_model.ckpt +dataset@dataset.dataset=Saved dataset.dataset.data_dir=data/example_dataset.csv dataset.dataset.num_neighbors=10 dataset.dataset.sparsify_step_time=10
 
 Training
 ^^^^^^^^
