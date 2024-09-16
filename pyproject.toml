@@ -37,7 +37,8 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+include = ["src/*.py"]
+sources = ["src"]
 
 [tool.pytest.ini_options]
 filterwarnings = [
