@@ -1,0 +1,6 @@
+name: First
+bias: false
+hidden:
+  dim: 7
+  layers: 9
+activation: ReLU
