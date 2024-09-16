@@ -64,7 +64,7 @@ Running Experiments
 Evaluating our trained model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We provide a pretrained model.
+We provide a pretrained model at ``models/pretrained_model.ckpt``.
 You can evaluate the model on your dataset by following these steps:
 
 #. Create a CSV file containing your data with the following columns:
