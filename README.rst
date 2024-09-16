@@ -46,15 +46,6 @@ Get Started with Development
 
       pytest tests
 
-#. Create a `WandB <wandb.ai/home>`_ account.
-#. Edit ``configs/wandb.yaml`` and replace the ``entity`` with your WandB entity name:
-
-   .. code-block:: yaml
-
-      entity: <your-entity-name>
-
-   Running the Python scripts in this project will create a WandB project in your account.
-
 Supplementary Documentation
 ---------------------------
 
