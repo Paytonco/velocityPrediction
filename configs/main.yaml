@@ -10,7 +10,7 @@ defaults:
   - _self_
 
 root_dir: /home/reepoi/GitHub/velocityPrediction
-out_dir: ${.root_dir}/../../out/rna_vel_pred
+out_dir: out
 run_dir: ${.out_dir}/runs
 data_dir: ${.root_dir}/data
 rng_seed: 0
@@ -26,5 +26,5 @@ trainer:
   ckpt: last
   logger: true
   devices: 1
-  accelerator: gpu
+  accelerator: cpu
   batch_size: 10

@@ -290,6 +290,15 @@ def get_dataset_df(cfg, rng_seed=0):
             df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
         elif cfg.name == 'SCVeloSimulation':
             df = generate_measurements_scvelo_simulation(cfg)
+        elif cfg.name == 'Saved':
+            df = pd.read_csv(cfg.data_dir)
+            df['measurement_id'] = range(len(df))
+            dim = len([c for c in df.columns if c.startswith('x')])
+            assert dim > 0, 'transciptional space as dimension zero. spatial dimension columns must be named "x<integer>"'
+            # add dummy velocity if it is missing
+            if 'v1' not in df.columns:
+                cols_vel = [f'v{i}' for i in range(1, dim + 1)]
+                df[cols_vel] = 0.
         elif cfg.name == 'SCVeloSaved':
             data_dir = Path(cfg.data_dir)
             name = data_dir.stem

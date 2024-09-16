@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import InMemoryDataset
+import pandas as pd
 import wandb
 
 import callbacks
@@ -79,6 +80,16 @@ class Runner(pl.LightningModule):
         batch._inc_dict['poi_vel_pred'] = batch._inc_dict['poi_vel']
         ds = InMemoryDataset(None)
         ds.save(batch.cpu().to_data_list(), f'{self.cfg.run_dir}/pred_{split}.pt')
+        measurement_id, t, pos, vel = [batch[x].cpu().numpy()
+                                       for x in ['poi_measurement_id', 'poi_t', 'poi_pos', 'poi_vel_pred']]
+        df = pd.DataFrame(dict(
+            measurement_id=measurement_id,
+            t=t,
+            **{f'x{i+1}': x for i, x in enumerate(pos.T)},
+            **{f'v{i+1}': v for i, v in enumerate(vel.T)}
+        ))
+        df = df.sort_values('measurement_id', ignore_index=True)
+        df.to_csv(f'{self.cfg.run_dir}/pred_{split}.csv', index=False)
         return True
 
 
@@ -174,8 +185,10 @@ def main(cfg):
     runner = Runner(cfg, model, splits)
 
     ckpt_path = None
-    if cfg.wandb.run and cfg.trainer.ckpt:
-        ckpt_path = Path(cfg.out_dir)/'runs'/cfg.wandb.run/f'{cfg.trainer.ckpt}.ckpt'
+    # if cfg.wandb.run and cfg.trainer.ckpt:
+    if cfg.trainer.ckpt:
+        # ckpt_path = Path(cfg.out_dir)/'runs'/cfg.wandb.run/f'{cfg.trainer.ckpt}.ckpt'
+        ckpt_path = cfg.trainer.ckpt
 
     if cfg.trainer.fit:
         trainer.fit(runner, ckpt_path=ckpt_path)
@@ -185,10 +198,14 @@ def main(cfg):
         trainer.test(runner, ckpt_path=ckpt_path)
     if cfg.trainer.pred:
         trainer.predict(runner, ckpt_path=ckpt_path)
+        df = pd.concat([pd.read_csv(f'{cfg.run_dir}/pred_{split}.csv') for split in ('train', 'val', 'test')])
+        df = df.set_index('measurement_id').sort_index()
+        df.to_csv(f'{cfg.run_dir}/pred.csv', index=False)
 
     wandb.finish()
     print('WandB Run ID')
     print(wrun.id)
+    print(f'Results saved to {cfg.run_dir}')
     return wrun.id
 
 

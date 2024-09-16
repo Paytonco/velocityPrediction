@@ -1,5 +1,5 @@
 entity: ""
 project: ""
 run: null
-dir: ${oc.select:..data_dir,.}
+dir: ${oc.select:..out_dir,.}
 tags: []
