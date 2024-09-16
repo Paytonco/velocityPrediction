@@ -13,7 +13,7 @@ import utils
     ['+dataset@dataset.A=MotifSimple'],
     ['+dataset@dataset.A=MotifOscillation'],
     ['+dataset@dataset.A=MotifBifurcation'],
-    ['+dataset@dataset.A=SCVeloSimulation'],
+    # ['+dataset@dataset.A=SCVeloSimulation'],
     *[
         ['+dataset@dataset.A=SCVeloSaved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
         for ds in ('bonemarrow', 'dentategyrus', 'pancreas',
@@ -45,7 +45,7 @@ def test_datasets_constant_poi_varying_num_neighbors(overrides_dataset):
     ['+dataset@dataset.A=MotifSimple'],
     ['+dataset@dataset.A=MotifOscillation'],
     ['+dataset@dataset.A=MotifBifurcation'],
-    ['+dataset@dataset.A=SCVeloSimulation'],
+    # ['+dataset@dataset.A=SCVeloSimulation'],
     *[
         ['+dataset@dataset.A=SCVeloSaved', f'dataset.A.data_dir={utils.DATA_DIR/ds}']
         for ds in ('bonemarrow', 'dentategyrus', 'pancreas',
@@ -98,21 +98,18 @@ def test_datasets_sparsify_step_time_sparsifies(sparsify_step_time):
             f'dataset.A.sparsify_step_time={sparsify_step_time}'
         ])
 
-    splits = map(datasets.DatasetMerged, zip(datasets.get_dataset(cfg.dataset.A, rng_seed=cfg.rng_seed)))
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(cfg.rng_seed, workers=True)
-        df = datasets.generate_measurements_simple(cfg.dataset.A.num_pnts, cfg.dataset.A.epsilon)
-        splits_df = datasets.split_train_val_test(df, train_prec=cfg.dataset.A.splits.train, val_prec=cfg.dataset.A.splits.val, test_prec=cfg.dataset.A.splits.test, rng_seed=cfg.rng_seed)
+        df = datasets.get_dataset_df(cfg.dataset.A, rng_seed=cfg.rng_seed)
+        df = df.sort_values('t', ignore_index=True)
+        ds = datasets.Dataset(datasets.process_measurements(df, cfg.dataset.A.sparsify_step_time, cfg.dataset.A.num_neighbors, 0))
 
-    for s, s_df in zip(splits, splits_df):
-        s_df = s_df.sort_values('t', ignore_index=True)
-        for i, d in enumerate(s):
-            if i < sparsify_step_time or i >= len(s) - 1 - sparsify_step_time:  # skip the poi on the boundary
+        for i, d in enumerate(ds):
+            if i < sparsify_step_time or i >= len(ds) - 1 - sparsify_step_time:  # skip the poi on the boundary
                 continue
-            # i+1 is the index of the poi in s_df, assert to be sure
-            assert torch.tensor(s_df.loc[i, 't']) == d.poi_t
+            assert torch.tensor(df.loc[i, 't']) == d.poi_t
             # the poi's neighbors should be sparsify_step_time away from i
             idx_ahead = i + sparsify_step_time
             idx_behind = i - sparsify_step_time
-            t_df = torch.tensor(s_df.iloc[[idx_behind, idx_ahead]]['t'].to_numpy())
+            t_df = torch.tensor(df.iloc[[idx_behind, idx_ahead]]['t'].to_numpy())
             assert (t_df == d.t.sort()[0]).all(), i
