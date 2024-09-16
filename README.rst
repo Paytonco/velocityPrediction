@@ -88,7 +88,7 @@ You can evaluate the model on your dataset by following these steps:
    * ``<dataset-csv-path>``: path to the CSV file containing your data
    * ``<num-neighbors>``: integer size of the neighbor sets
    * ``<sparsity-step>``: the sparsification step to use
-#. A CSV called ``pred.csv`` will be created containing the predicted velocity information.
+#. A CSV called ``pred.csv`` will be created containing the predicted RNA velocity.
    It will be located at ``out/runs/<wandb-run-id>/pred.csv`` where ``<wandb-run-id>`` is printed when the program finishes running.
 
 Example command that evaluates the pretrained model on the example dataset 10 neighbors and a sparsity step of 10:
