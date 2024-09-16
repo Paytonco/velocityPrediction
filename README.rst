@@ -32,13 +32,17 @@ Get Started with Development
 
       pip install hatchling==1.25.0
 
-#. Install `PyTorch 1.13.1 <pytorch.org/get-started/previous-versions/#v1131>`_.
-
 #. Install the project Python package:
 
    .. code-block:: bash
 
       pip install -e .
+
+#. Install ``torch-cluster 1.6.3``:
+
+   .. code-block:: bash
+
+      pip install torch-cluster==1.6.3
 
 #. Test your installation by running pytest:
 
@@ -63,8 +67,7 @@ Evaluating our trained model
 We provide a pretrained model.
 You can evaluate the model on your dataset by following these steps:
 
-#. Create a new directory in the ``data`` directory of this repository with the name of your dataset ``<dataset-name>``.
-#. Put your data into a CSV file with the following columns:
+#. Create a CSV file containing your data with the following columns:
 
    - ``t``: the pseudotime of the measurement
    - ``x<integer>``: the components of the measurement's state in (projected) transcriptional space.
@@ -72,25 +75,27 @@ You can evaluate the model on your dataset by following these steps:
    - ``v<integer>``: (optional) the components of the measurement's RNA velocity.
      For example, a three-dimensional RNA velocity would have the columns ``v1``, ``v2``, and ``v3``.
 
-#. Name your CSV file ``<dataset-name>__umap_n_components_<integer>`` where ``<integer>`` is the transcriptional space dimension of your data, and put it into the directory created in the first step.
+   Look at ``data/example_dataset.csv`` for an example dataset without RNA velocity measurements, and ``data/example_dataset_with_velocity.csv`` for an example with RNA velocity measurements.
 #. Evaluate the model on your dataset by running the following command:
 
    .. code-block:: bash
 
-      python3 src/main.py +dataset@dataset.<dataset-name>=SCVeloSaved dataset.<dataset-name>.data_subdir=<dataset-name> dataset.<dataset-name>.umap.n_components=<data-dimension> dataset.<dataset-name>.num_neighbors=<num-neighbors> dataset.<dataset-name>.sparsify_step_time=<sparsity-step> model=PretrainedModel trainer.fit=false trainer.pred=true
+      python3 src/main.py trainer.fit=false trainer.pred=true model=PretrainedModel trainer.ckpt=models/pretrained_model.ckpt +dataset@dataset.<dataset-name>=Saved dataset.<dataset-name>.data_dir=<dataset-csv-path> dataset.<dataset-name>.num_neighbors=<num-neighbors> dataset.<dataset-name>.sparsify_step_time=<sparsity-step>
 
    where the angle braket values are replaced as follows:
 
-   * ``<dataset-name>``: name of the dataset to evaluate the model on
-   * ``<data-dimension>``: integer transcriptional space dimension of your data
+   * ``<dataset-name>``: the name of your dataset
+   * ``<dataset-csv-path>``: path to the CSV file containing your data
    * ``<num-neighbors>``: integer size of the neighbor sets
    * ``<sparsity-step>``: the sparsification step to use
+#. A CSV called ``pred.csv`` will be created containing the predicted velocity information.
+   It will be located at ``out/runs/<wandb-run-id>/pred.csv`` where ``<wandb-run-id>`` is printed when the program finishes running.
 
-Example command that evaluates the pretrained model on the pancreas dataset projected to 17 dimensions with 20 neighbors and a sparsity step of 18:
+Example command that evaluates the pretrained model on the example dataset 10 neighbors and a sparsity step of 10:
 
 .. code-block:: bash
 
-   python3 src/main.py model=PretrainedModel trainer.fit=false trainer.pred=true +dataset@dataset.pancreas=SCVeloSaved dataset.pancreas.umap.n_components=17 dataset.pancreas.data_subdir=pancreas dataset.pancreas.num_neighbors=20 dataset.pancreas.sparsify_step_time=18
+   python3 src/main.py trainer.fit=false trainer.pred=true model=PretrainedModel trainer.ckpt=models/pretrained_model.ckpt +dataset@dataset.dataset=Saved dataset.dataset.data_dir=data/example_dataset.csv dataset.dataset.num_neighbors=10 dataset.<dataset-name>.sparsify_step_time=10
 
 Training
 ^^^^^^^^
