@@ -9,6 +9,7 @@ version = '0.0.0'
 description = ''
 dependencies = [
     'scvelo==0.3.2',
+    'h5py==3.8.0',
     'torch==2.4.1',
     'scanpy==1.9.8',
     'scipy==1.13.1',

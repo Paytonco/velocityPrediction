@@ -109,6 +109,42 @@ def get_runs(cfg):
         yield r.id, run_dir, run_cfg, run_datasets
 
 
+def histogram(cfg):
+    assert len(cfg.run_ids) == 1
+    for rid, run_dir, run_cfg, run_datasets in get_runs(cfg):
+        ds = run_datasets[cfg.split]
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        # note that the vectors are normalized
+        cosine_loss = (data.poi_vel_pred - data.poi_vel).pow(2).sum(1) / 2
+        return pd.DataFrame({'Cosine Loss': cosine_loss.numpy()})
+
+
+def loss_table(cfg):
+    def loss_fn(input, target):
+        input_norm2 = input.pow(2).sum(1, keepdim=True)
+        # mse_loss \in [0, 4]. If the model outputs at least one zero vector,
+        # loss_zero_norm will be at least 4; otherwise, it is zero.
+        # Sum reduce is used because a mean reduce could be less than 4.
+        loss_zero_norm = 4*(1 - input_norm2).pow(2).sum()
+        return 17*F.mse_loss(input, target) + loss_zero_norm
+
+    dfs = []
+    for rid, run_dir, run_cfg, run_datasets in get_runs(cfg):
+        ds = run_datasets[cfg.split]
+        data = next(iter(DataLoader(ds, batch_size=len(ds))))
+        # note that the vectors are normalized
+        loss = loss_fn(data.poi_vel, data.poi_vel_pred)
+        # loss = (data.poi_vel - data.poi_vel_pred).pow(2).sum(1).mean()
+        dfs.append(pd.DataFrame({
+            'run_id': rid,
+            'loss': loss.numpy(),
+            'cosine': loss.numpy() / 2,
+            'data_subdir': run_cfg.dataset_summary.data_dir.split('/')[-1],
+        }, index=[0]))
+
+    return pd.concat(dfs, ignore_index=True)
+
+
 def complete_edges(num_nodes):
     labels = torch.arange(num_nodes, dtype=torch.long)
     edge_index = torch.stack((
@@ -412,4 +448,13 @@ def main(cfg):
 
 
 if __name__ == '__main__':
-    main()
+    cfg = OmegaConf.load(utils.ROOT_DIR/'configs'/'wandb.yaml')
+    cfg = OmegaConf.create(dict(
+        wandb=cfg,
+        out_dir=(utils.ROOT_DIR/'../../out/rna_vel_pred/rna_vel_pred').resolve(),
+        run_ids=[
+            'ar8z2bao', 'li21mqmc', '66171mxq', '2uixz7e2',
+        ],
+        split='test',
+    ))
+    loss_table(cfg)
