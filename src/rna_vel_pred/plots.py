@@ -19,10 +19,7 @@ import matplotlib.pyplot as plt
 from anndata import AnnData
 import scvelo
 
-import datasets
-import main as trainer_main
-import utils
-import wandbruns
+from rna_vel_pred import datasets, utils, wandbruns, main as trainer_main
 
 
 def adata_from_pos(pos):

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch_geometric as tg
 import lightning.pytorch as pl
 
-import utils
+from rna_vel_pred import utils
 
 
 class First(nn.Module):

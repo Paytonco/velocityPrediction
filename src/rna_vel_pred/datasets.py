@@ -14,7 +14,7 @@ import scvelo
 import tables
 import anndata
 
-import utils
+from rna_vel_pred import cs, utils
 
 
 torch.set_default_dtype(torch.float64)
@@ -151,9 +151,8 @@ def generate_measurements_scvelo_simulation(cfg):
     )
 
 
-def download_bonemarrow(cfg, data_dir):
-    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
-    adata = scvelo.datasets.bonemarrow(path_h5ad)
+def download_bonemarrow(filename_h5ad, umap_dimension):
+    adata = scvelo.datasets.bonemarrow(filename_h5ad)
 
     scvelo.pp.filter_and_normalize(adata)
     scvelo.pp.moments(adata)
@@ -162,7 +161,7 @@ def download_bonemarrow(cfg, data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
+    scvelo.tl.umap(adata, n_components=umap_dimension)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     return dict(
@@ -172,9 +171,8 @@ def download_bonemarrow(cfg, data_dir):
     )
 
 
-def download_dentategyrus(cfg, data_dir):
-    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
-    adata = scvelo.datasets.dentategyrus(path_h5ad)
+def download_dentategyrus(filename_h5ad, umap_dimension):
+    adata = scvelo.datasets.dentategyrus(filename_h5ad)
 
     scvelo.pp.filter_and_normalize(adata)
     scvelo.pp.moments(adata)
@@ -183,7 +181,7 @@ def download_dentategyrus(cfg, data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
+    scvelo.tl.umap(adata, n_components=umap_dimension)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     return dict(
@@ -193,12 +191,11 @@ def download_dentategyrus(cfg, data_dir):
     )
 
 
-def download_forebrain(cfg, data_dir):
-    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
+def download_forebrain(filename_h5ad, umap_dimension):
     try:
-        adata = scvelo.datasets.forebrain(path_h5ad)
+        adata = scvelo.datasets.forebrain(filename_h5ad)
     except (TypeError, anndata._io.utils.AnnDataReadError):
-        f = tables.open_file(path_h5ad, mode='r+')
+        f = tables.open_file(filename_h5ad, mode='r+')
         # these are empty
         f.remove_node('/row_graphs')
         f.remove_node('/col_graphs')
@@ -207,7 +204,7 @@ def download_forebrain(cfg, data_dir):
         f.rename_node('/col_attrs', 'var')
         f.rename_node('/matrix', 'X')
         f.close()
-        adata = scvelo.datasets.forebrain(path_h5ad)
+        adata = scvelo.datasets.forebrain(filename_h5ad)
 
     scvelo.pp.remove_duplicate_cells(adata)  # for forebrain
     scvelo.pp.neighbors(adata)  # for forebrain
@@ -218,7 +215,7 @@ def download_forebrain(cfg, data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
+    scvelo.tl.umap(adata, n_components=umap_dimension)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     return dict(
@@ -228,9 +225,8 @@ def download_forebrain(cfg, data_dir):
     )
 
 
-def download_pancreas(cfg, data_dir):
-    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
-    adata = scvelo.datasets.pancreas(path_h5ad)
+def download_pancreas(filename_h5ad, umap_dimension):
+    adata = scvelo.datasets.pancreas(filename_h5ad)
 
     scvelo.pp.filter_and_normalize(adata)
     scvelo.pp.moments(adata)
@@ -239,7 +235,7 @@ def download_pancreas(cfg, data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
+    scvelo.tl.umap(adata, n_components=umap_dimension)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     return dict(
@@ -249,9 +245,8 @@ def download_pancreas(cfg, data_dir):
     )
 
 
-def download_pbmc68k(cfg, data_dir):
-    path_h5ad = str(data_dir/f'{data_dir.stem}.h5ad')
-    adata = scvelo.datasets.pbmc68k(path_h5ad)
+def download_pbmc68k(filename_h5ad, umap_dimension):
+    adata = scvelo.datasets.pbmc68k(filename_h5ad)
 
     scvelo.pp.filter_and_normalize(adata)
     scvelo.pp.moments(adata)
@@ -260,7 +255,7 @@ def download_pbmc68k(cfg, data_dir):
     scvelo.tl.velocity_graph(adata)
     scvelo.tl.velocity_pseudotime(adata)
 
-    scvelo.tl.umap(adata, n_components=cfg.umap.n_components)
+    scvelo.tl.umap(adata, n_components=umap_dimension)
     scvelo.tl.velocity_embedding(adata, basis='umap')
 
     return dict(
@@ -282,45 +277,33 @@ def split_train_val_test(ds, train_prec, val_prec, test_prec, rng_seed):
 def get_dataset_df(cfg, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
-        if cfg.name == 'MotifSimple':
+        if isinstance(cfg, cs.DatasetSimple):
             df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'MotifOscillation':
+        elif isinstance(cfg, cs.DatasetOscillation):
             df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'MotifBifurcation':
+        elif isinstance(cfg, cs.DatasetBifurcation):
             df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
-        elif cfg.name == 'SCVeloSimulation':
-            df = generate_measurements_scvelo_simulation(cfg)
-        elif cfg.name == 'Saved':
-            df = pd.read_csv(cfg.data_dir)
-            df['measurement_id'] = range(len(df))
-            dim = len([c for c in df.columns if c.startswith('x')])
-            assert dim > 0, 'transciptional space as dimension zero. spatial dimension columns must be named "x<integer>"'
-            # add dummy velocity if it is missing
-            if 'v1' not in df.columns:
-                cols_vel = [f'v{i}' for i in range(1, dim + 1)]
-                df[cols_vel] = 0.
-        elif cfg.name == 'SCVeloSaved':
+        elif isinstance(cfg, cs.DatasetForUMap):
             data_dir = Path(cfg.data_dir)
-            name = data_dir.stem
-            csv_path = data_dir/f'{name}__{cfg.csv.name_suffix}.csv'
-            dims = [*range(1, cfg.umap.n_components + 1)]
+            file_processed = data_dir/cfg.filename_processed
+            dims = 1 + np.arange(cfg.umap_dimension)
             cols_pos = [f'x{i}' for i in dims]
             cols_vel = [f'v{i}' for i in dims]
-            if cfg.csv.load_saved and csv_path.exists():
-                df = pd.read_csv(csv_path)
+            if cfg.csv.load_saved and file_processed.exists():
+                df = pd.read_parquet(file_processed)
             else:
-                if name == 'bonemarrow':
-                    data = download_bonemarrow(cfg, data_dir)
-                elif name == 'dentategyrus':
-                    data = download_dentategyrus(cfg, data_dir)
-                elif name == 'forebrain':
-                    data = download_forebrain(cfg, data_dir)
-                elif name == 'pancreas':
-                    data = download_pancreas(cfg, data_dir)
-                elif name == 'pbmc68k':
-                    data = download_pbmc68k(cfg, data_dir)
+                if cfg.dataset is cs.UMapDataset.BONEMARROW:
+                    data = download_bonemarrow(cfg, data_dir/cfg.filename_h5ad)
+                elif cfg.dataset is cs.UMapDataset.DENTATE_GYRUS:
+                    data = download_dentategyrus(cfg, data_dir/cfg.filename_h5ad)
+                elif cfg.dataset is cs.UMapDataset.FOREBRAIN:
+                    data = download_forebrain(cfg, data_dir/cfg.filename_h5ad)
+                elif cfg.dataset is cs.UMapDataset.PANCREAS:
+                    data = download_pancreas(cfg, data_dir/cfg.filename_h5ad)
+                elif cfg.dataset is cs.UMapDataset.PBMC68K:
+                    data = download_pbmc68k(cfg, data_dir/cfg.filename_h5ad)
                 else:
-                    raise ValueError(f'Unknown saved dataset: {name}')
+                    raise ValueError(f'Unknown umap dataset: {cfg.dataset}')
                 data = np.concatenate((
                     data['t'].to_numpy()[:, None],
                     data['pos'], data['vel']
@@ -329,9 +312,9 @@ def get_dataset_df(cfg, rng_seed=0):
                     data=data,
                     columns=['t', *cols_pos, *cols_vel]
                 )
-                df.to_csv(csv_path, index=False)
+                df.to_parquet(file_processed, index=False)
         else:
-            raise ValueError(f'Unknown dataset: {cfg.name}')
+            raise ValueError(f'Unknown dataset: {cfg}')
 
         if cfg.reverse_velocities:
             df[cols_vel] = -df[cols_vel]
@@ -357,18 +340,14 @@ def get_dataset(cfg, rng_seed=0):
         return train, val, test
 
 
-@hydra.main(version_base=None, config_path='../configs', config_name='main')
+@hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
-    with omegaconf.open_dict(cfg):
-        cfg.out_dir = str(Path(cfg.out_dir).resolve())
-    print(OmegaConf.to_yaml(cfg, resolve=True))
-
-    if cfg.get('dataset') is None:
-        raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
-
-    train, val, test = map(DatasetMerged, zip(*[get_dataset(v, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
-    breakpoint()
-    print('end')
+    engine = cs.get_engine()
+    cs.create_all(engine)
+    with cs.orm.Session(engine, expire_on_commit=False) as db:
+        cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+        train, val, test = map(DatasetMerged, zip(*[get_dataset(v, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
+        print('end')
 
 
 if __name__ == "__main__":

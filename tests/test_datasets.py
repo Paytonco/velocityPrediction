@@ -5,8 +5,7 @@ import omegaconf
 import lightning.pytorch as pl
 
 
-import datasets
-import utils
+from rna_vel_pred import datasets, utils
 
 
 @pytest.mark.parametrize('overrides_dataset', [

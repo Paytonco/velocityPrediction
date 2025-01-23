@@ -1,5 +1,8 @@
 from collections import defaultdict
 from pathlib import Path
+import pprint
+import sys
+import logging
 
 import hydra
 import omegaconf
@@ -12,10 +15,10 @@ from torch_geometric.data import InMemoryDataset
 import pandas as pd
 import wandb
 
-import callbacks
-import datasets
-import models
-import wandbruns
+from rna_vel_pred import cs, callbacks, datasets, models, utils
+
+
+log = logging.getLogger(__file__)
 
 
 def loss(input, target):
@@ -24,7 +27,7 @@ def loss(input, target):
     # loss_zero_norm will be at least 4; otherwise, it is zero.
     # Sum reduce is used because a mean reduce could be less than 4.
     loss_zero_norm = 4*(1 - input_norm2).pow(2).sum()
-    return F.mse_loss(input, target) + loss_zero_norm
+    return input.shape[1] * F.mse_loss(input, target) + loss_zero_norm
 
 
 class Runner(pl.LightningModule):
@@ -93,121 +96,91 @@ class Runner(pl.LightningModule):
         return True
 
 
-def cfg_normalize_dataset(cfg):
-    cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
-    cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
-
-
-@hydra.main(version_base=None, config_path='../configs', config_name='main')
+@hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
+    engine = cs.get_engine()
+    cs.create_all(engine)
+    with cs.orm.Session(engine, expire_on_commit=False) as db:
+        cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+        db.commit()
+        pprint.pp(cfg)
+        log.info('Command: %s', ' '.join(sys.argv))
+        log.info(f'Outputs will be saved to: {cfg.run_dir}')
+
     torch.set_default_dtype(torch.float64)  # must put here when calling main in a loop
-    if cfg.trainer.fit:
-        job_type = 'fit'
-    elif cfg.trainer.val:
-        job_type = 'val'
-    elif cfg.trainer.test:
-        job_type = 'test'
-    elif cfg.trainer.pred:
-        job_type = 'pred'
-    else:
-        raise ValueError('Trainer will not fit, val or test.')
-    wrun = wandb.init(
-        entity=cfg.wandb.entity,
-        project=cfg.wandb.project,
-        dir=cfg.wandb.dir,
-        tags=cfg.wandb.tags,
-        job_type=job_type,
-    )
-    with omegaconf.open_dict(cfg):
-        cfg.out_dir = str(Path(cfg.out_dir).resolve())
-        cfg.run_dir = str(Path(cfg.run_dir)/wrun.id)
-        if cfg.wandb.run is not None and len(cfg.trainer.copy_saved_cfg):
-            run_saved_cfg = OmegaConf.create(wandbruns.query_runs(cfg.wandb.entity, cfg.wandb.project, {'name': cfg.wandb.run}, {}, {})[0].config)
-            for k in cfg.trainer.copy_saved_cfg:
-                cfg[k] = run_saved_cfg[k]
-            if 'dataset' not in cfg.trainer.copy_saved_cfg:
-                if cfg.get('dataset') is None:
-                    raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
-                cfg_normalize_dataset(cfg)
-        else:
-            if cfg.get('dataset') is None:
-                raise ValueError('No datasets selected. Select a dataset with "+dataset@dataset.<name>=<dataset_cfg>".')
-            cfg_normalize_dataset(cfg)
-        dataset_summary = defaultdict(list)
-        for ds in cfg.dataset:
-            dataset_summary['name'].append(ds.name)
-            dataset_summary['data_dir'].append(ds.get('data_dir', ''))
-            dataset_summary['num_neighbors'].append(ds.num_neighbors)
-            dataset_summary['sparsify_step_time'].append(ds.sparsify_step_time)
-            if ds.name == 'SCVeloSaved':
-                dataset_summary['umap_num_components'].append(ds.umap.n_components)
-        cfg.dataset_summary = {k: ','.join(map(str, v)) for k, v in dataset_summary.items()}
-        # normalize dataset list in by sorting by name, then sorting by path
-        # cfg.dataset = sorted(cfg.dataset.values(), key=lambda c: c.name)
-        # cfg.dataset = sorted(cfg.dataset, key=lambda c: c.get('path', '\0'))
-    Path(cfg.run_dir).mkdir(parents=True)
 
-    logger = pl.loggers.WandbLogger(project=cfg.wandb.project, save_dir=cfg.run_dir)
-    logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
+    splits = map(datasets.DatasetMerged, zip(*[
+        datasets.get_dataset(v, rng_seed=cfg.rng_seed)
+        for v in cfg.dataset
+    ]))
+    splits = {k: s for k, s in zip(('train', 'val', 'test'), splits)}
+    splits['train'] = splits['train'].shuffle()
 
-    print(OmegaConf.to_yaml(cfg, resolve=True))
-
-    cbs = [
-        callbacks.PlotCB(),
-        callbacks.ModelCheckpoint(
-            dirpath=cfg.run_dir,
-            filename='{epoch}',
-            save_last=True,
-            save_top_k=-1,
-            save_on_train_epoch_end=False,
-        )
-    ]
-
+    logger = pl.loggers.TensorBoardLogger(cfg.run_dir, name='', version='tb_logs')
     trainer = pl.Trainer(
         devices=cfg.trainer.devices,
         accelerator=cfg.trainer.accelerator,
         max_epochs=cfg.trainer.max_epochs,
         logger=not cfg.trainer.logger or logger,
         precision=64,
-        callbacks=cbs,
+        callbacks=[
+            callbacks.PlotCB(),
+            callbacks.ModelCheckpoint(
+                dirpath=cfg.run_dir,
+                filename='{epoch}',
+                save_last='link',
+                save_top_k=-1,
+                save_on_train_epoch_end=False,
+                enable_version_counter=False,
+            )
+        ],
         check_val_every_n_epoch=cfg.trainer.check_val_every_n_epoch,
         deterministic=True
     )
 
-    splits = map(datasets.DatasetMerged, zip(*[
-        datasets.get_dataset(v, rng_seed=cfg.rng_seed)
-        for v in cfg.dataset
-    ]))
-    splits = {k: s.shuffle() for k, s in zip(('train', 'val', 'test'), splits)}
-
-    model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
+    if isinstance(cfg.model, cs.ModelTrained):
+        model = models.get_model(cfg.model.config.model, rng_seed=cfg.model.config.rng_seed)
+        ckpt_path = cfg.model.config.run_dir/cfg.model.ckpt_filename
+    else:
+        model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
+        ckpt_path = None
 
     runner = Runner(cfg, model, splits)
 
-    ckpt_path = None
-    # if cfg.wandb.run and cfg.trainer.ckpt:
-    if cfg.trainer.ckpt:
-        # ckpt_path = Path(cfg.out_dir)/'runs'/cfg.wandb.run/f'{cfg.trainer.ckpt}.ckpt'
-        ckpt_path = cfg.trainer.ckpt
-
     if cfg.trainer.fit:
         trainer.fit(runner, ckpt_path=ckpt_path)
-    if cfg.trainer.val:
-        trainer.validate(runner, ckpt_path=ckpt_path)
-    if cfg.trainer.test:
-        trainer.test(runner, ckpt_path=ckpt_path)
     if cfg.trainer.pred:
         trainer.predict(runner, ckpt_path=ckpt_path)
+        # TODO: ??? too complicated
         df = pd.concat([pd.read_csv(f'{cfg.run_dir}/pred_{split}.csv') for split in ('train', 'val', 'test')])
         df = df.set_index('measurement_id').sort_index()
         df.to_csv(f'{cfg.run_dir}/pred.csv', index=False)
 
-    wandb.finish()
-    print('WandB Run ID')
-    print(wrun.id)
-    print(f'Results saved to {cfg.run_dir}')
-    return wrun.id
+
+def get_run_dir(hydra_init=utils.HYDRA_INIT, commit=True):
+    with hydra.initialize(version_base=hydra_init['version_base'], config_path=hydra_init['config_path']):
+        last_override = None
+        overrides = []
+        for i, a in enumerate(sys.argv):
+            if '=' in a:
+                overrides.append(a)
+                last_override = i
+        cfg = hydra.compose(hydra_init['config_name'], overrides=overrides)
+        engine = cs.get_engine()
+        cs.create_all(engine)
+        with cs.orm.Session(engine, expire_on_commit=False) as db:
+            cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+            if commit and '-c' not in sys.argv:
+                db.commit()
+                cfg.run_dir.mkdir(exist_ok=True)
+            return last_override, str(cfg.run_dir)
 
 
 if __name__ == '__main__':
+    last_override, run_dir = get_run_dir()
+    run_dir_override = f'hydra.run.dir={run_dir}'
+    if last_override is None:
+        sys.argv.append(run_dir_override)
+    else:
+        sys.argv.insert(last_override + 1, run_dir_override)
     main()
