@@ -1,0 +1,4 @@
+defaults:
+  - ForUMap
+
+dataset: PANCREAS
