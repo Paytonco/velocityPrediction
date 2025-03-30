@@ -19,6 +19,7 @@ def get_engine(dir=str(utils.DIR_ROOT), name='runs'):
 class Conf(orm.Table):
     root_dir: str = field(default=str(utils.DIR_ROOT.resolve()))
     out_dir: str = field(default=str((utils.DIR_ROOT/'..'/'..'/'out'/'rna_vel_pred-new').resolve()))
+    data_subdir: Path = field(default=str((utils.DIR_ROOT/'..'/'..'/'out'/'rna_vel_pred-new'/'data_redesign').resolve()))
     run_subdir: str = field(default='runs')
     prediction_filename: str = field(default='prediction.pt')
     device: str = field(default='cuda')
@@ -27,11 +28,15 @@ class Conf(orm.Table):
     rng_seed: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=2376999025)
     fit: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
 
-    datasets = orm.ManyToManyField(conf.datasets.Dataset, default_factory=list)
+    datasets = orm.ManyToManyField(conf.datasets.Dataset, default_factory=list, enforce_element_type=False)
 
     @property
     def run_dir(self):
         return Path(self.out_dir)/self.run_subdir/self.alt_id
+
+    @property
+    def data_dir(self):
+        return Path(self.out_dir)/self.data_subdir
 
 
 sa.event.listens_for(Conf, 'before_insert')(
@@ -43,3 +48,4 @@ orm.store_config(Conf)
 orm.store_config(conf.datasets.SimpleMotif)
 orm.store_config(conf.datasets.OscillationMotif)
 orm.store_config(conf.datasets.BifurcationMotif)
+orm.store_config(conf.datasets.H5adUMap)

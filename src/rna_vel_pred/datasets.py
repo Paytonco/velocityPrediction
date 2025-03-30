@@ -1,8 +1,8 @@
-from pathlib import Path
+from collections import defaultdict
+import pprint
 import itertools
 
 import hydra
-import omegaconf
 from omegaconf import OmegaConf
 import lightning.pytorch as pl
 import numpy as np
@@ -14,7 +14,8 @@ import scvelo
 import tables
 import anndata
 
-from rna_vel_pred import cs, utils
+from conf import conf, datasets
+from rna_vel_pred import utils
 
 
 torch.set_default_dtype(torch.float64)
@@ -71,64 +72,64 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
     return data_list
 
 
-def generate_measurements_simple(num_pnts, epsilon):
-    pos0 = torch.zeros(num_pnts, 2)
-    pos0[:, 1] = epsilon * torch.rand(num_pnts)
-    pos = pos0.clone()
-    t = 3 * torch.rand(num_pnts)
-    pos[:, 0] = t
-    pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
+class Motif:
+    @staticmethod
+    def generate_simple(cfg):
+        pos0 = torch.zeros(cfg.measurement_count, 2)
+        pos0[:, 1] = cfg.initial_condition_noise_epsilon * torch.rand(cfg.measurement_count)
+        pos = pos0.clone()
+        t = 3 * torch.rand(cfg.measurement_count)
+        pos[:, 0] = t
+        pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
 
-    vel = torch.stack((
-        torch.ones(pos.size(0)),
-        .2 * pos[:, 0] * (pos[:, 1] - 1)
-    )).T
+        vel = torch.stack((
+            torch.ones(pos.size(0)),
+            .2 * pos[:, 0] * (pos[:, 1] - 1)
+        )).T
 
-    return pd.DataFrame(
-        torch.cat((t[:, None], pos, vel), axis=1),
-        columns=['t', 'x1', 'x2', 'v1', 'v2']
-    )
+        return Motif._to_dataframe(t, pos, vel)
 
+    @staticmethod
+    def generate_oscillation(cfg):
+        pos0 = torch.zeros(cfg.measurement_count, 2)
+        pos0[:, 0] = 1 + cfg.initial_condition_noise_epsilon * (2 * torch.rand(cfg.measurement_count) - 1)
+        pos = pos0.clone()
+        t = 2 * np.pi * torch.rand(cfg.measurement_count)
+        pos[:, 0] = pos0[:, 0] * torch.cos(t) + pos0[:, 1] * torch.sin(t)
+        pos[:, 1] = -pos0[:, 0] * torch.sin(t) + pos0[:, 1] * torch.cos(t)
 
-def generate_measurements_oscillation(num_pnts, epsilon):
-    pos0 = torch.zeros(num_pnts, 2)
-    pos0[:, 0] = 1 + epsilon * (2 * torch.rand(num_pnts) - 1)
-    pos = pos0.clone()
-    t = 2 * np.pi * torch.rand(num_pnts)
-    pos[:, 0] = pos0[:, 0] * torch.cos(t) + pos0[:, 1] * torch.sin(t)
-    pos[:, 1] = -pos0[:, 0] * torch.sin(t) + pos0[:, 1] * torch.cos(t)
+        vel = torch.stack((pos[:, 1], -pos[:, 0])).T
 
-    vel = torch.stack((pos[:, 1], -pos[:, 0])).T
+        return Motif._to_dataframe(t, pos, vel)
 
-    return pd.DataFrame(
-        torch.cat((t[:, None], pos, vel), axis=1),
-        columns=['t', 'x1', 'x2', 'v1', 'v2']
-    )
+    @staticmethod
+    def generate_bifurcation(cfg):
+        pos0 = torch.zeros(cfg.measurement_count, 2)
+        branch = 2 * torch.bernoulli(.5 * torch.ones(cfg.measurement_count)) - 1
+        pos0[:, 1] = 1 + cfg.initial_condition_noise_epsilon * (.5 * torch.rand(cfg.measurement_count) + .5) * branch
+        pos = pos0.clone()
 
+        t = 6 * torch.rand(cfg.measurement_count)
 
-def generate_measurements_bifurcation(num_pnts, epsilon):
-    pos0 = torch.zeros(num_pnts, 2)
-    branch = 2 * torch.bernoulli(.5 * torch.ones(num_pnts)) - 1
-    pos0[:, 1] = 1 + epsilon * (.5 * torch.rand(num_pnts) + .5) * branch
-    pos = pos0.clone()
+        pos[:, 0] = t
+        pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
 
-    t = 6 * torch.rand(num_pnts)
+        vel = torch.stack((
+            torch.ones(pos.size(0)),
+            .2 * pos[:, 0] * (pos[:, 1] - 1)
+        )).T
 
-    pos[:, 0] = t
-    pos[:, 1] = (pos0[:, 1] - 1) * torch.exp(.1 * t**2 + pos0[:, 0] * t) + 1
+        return Motif._to_dataframe(t, pos, vel)
 
-    vel = torch.stack((
-        torch.ones(pos.size(0)),
-        .2 * pos[:, 0] * (pos[:, 1] - 1)
-    )).T
-
-    return pd.DataFrame(
-        torch.cat((t[:, None], pos, vel), axis=1),
-        columns=['t', 'x1', 'x2', 'v1', 'v2']
-    )
+    @staticmethod
+    def _to_dataframe(t, pos, vel):
+        return pd.DataFrame(
+            torch.cat((t[:, None], pos, vel), axis=1),
+            columns=['t', 'x1', 'x2', 'v1', 'v2']
+        )
 
 
-def generate_measurements_scvelo_simulation(cfg):
+def generate_scvelo_simulation(cfg):
     adata = scvelo.datasets.simulation(n_obs=cfg.num_pnts)
 
     scvelo.pp.filter_and_normalize(adata)
@@ -151,168 +152,94 @@ def generate_measurements_scvelo_simulation(cfg):
     )
 
 
-def download_bonemarrow(filename_h5ad, umap_dimension):
-    adata = scvelo.datasets.bonemarrow(filename_h5ad)
+class SCVeloDataset:
+    @staticmethod
+    def download_h5ad(cfg, data_dir):
+        if cfg.dataset is datasets.UMapDataset.BONEMARROW:
+            adata = scvelo.datasets.bonemarrow(data_dir/cfg.h5ad_path)
+        elif cfg.dataset is datasets.UMapDataset.DENTATE_GYRUS:
+            adata = scvelo.datasets.dentategyrus(data_dir/cfg.h5ad_path)
+        elif cfg.dataset is datasets.UMapDataset.FOREBRAIN:
+            try:
+                adata = scvelo.datasets.forebrain(data_dir/cfg.h5ad_path)
+            except (TypeError, anndata._io.utils.AnnDataReadError):
+                f = tables.open_file(data_dir/cfg.h5ad_path, mode='r+')
+                # these are empty
+                f.remove_node('/row_graphs')
+                f.remove_node('/col_graphs')
+                # rename to match AnnData data structure
+                f.rename_node('/row_attrs', 'obs')
+                f.rename_node('/col_attrs', 'var')
+                f.rename_node('/matrix', 'X')
+                f.close()
+                adata = scvelo.datasets.forebrain(data_dir/cfg.h5ad_path)
+        elif cfg.dataset is datasets.UMapDataset.PANCREAS:
+            adata = scvelo.datasets.pancreas(data_dir/cfg.h5ad_path)
+        elif cfg.dataset is datasets.UMapDataset.PBMC68K:
+            adata = scvelo.datasets.pbmc68k(data_dir/cfg.h5ad_path)
+        else:
+            raise ValueError(f'Unknown umap dataset: {cfg.dataset}')
+        return adata
 
-    scvelo.pp.filter_and_normalize(adata)
-    scvelo.pp.moments(adata)
-    scvelo.tl.velocity(adata, mode='stochastic')
+    @staticmethod
+    def process_umap(cfg, adata):
+        if cfg.dataset is datasets.UMapDataset.FOREBRAIN:
+            scvelo.pp.remove_duplicate_cells(adata)
+            scvelo.pp.neighbors(adata)
 
-    scvelo.tl.velocity_graph(adata)
-    scvelo.tl.velocity_pseudotime(adata)
+        scvelo.pp.filter_and_normalize(adata)
+        scvelo.pp.moments(adata)
+        scvelo.tl.velocity(adata, mode='stochastic')
 
-    scvelo.tl.umap(adata, n_components=umap_dimension)
-    scvelo.tl.velocity_embedding(adata, basis='umap')
+        scvelo.tl.velocity_graph(adata)
+        scvelo.tl.velocity_pseudotime(adata)
 
-    return dict(
-        t=adata.obs.velocity_pseudotime,
-        pos=adata.obsm['X_umap'],
-        vel=adata.obsm['velocity_umap']
-    )
+        scvelo.tl.umap(adata, n_components=cfg.umap_dimension)
+        scvelo.tl.velocity_embedding(adata, basis='umap')
 
-
-def download_dentategyrus(filename_h5ad, umap_dimension):
-    adata = scvelo.datasets.dentategyrus(filename_h5ad)
-
-    scvelo.pp.filter_and_normalize(adata)
-    scvelo.pp.moments(adata)
-    scvelo.tl.velocity(adata, mode='stochastic')
-
-    scvelo.tl.velocity_graph(adata)
-    scvelo.tl.velocity_pseudotime(adata)
-
-    scvelo.tl.umap(adata, n_components=umap_dimension)
-    scvelo.tl.velocity_embedding(adata, basis='umap')
-
-    return dict(
-        t=adata.obs.velocity_pseudotime,
-        pos=adata.obsm['X_umap'],
-        vel=adata.obsm['velocity_umap']
-    )
-
-
-def download_forebrain(filename_h5ad, umap_dimension):
-    try:
-        adata = scvelo.datasets.forebrain(filename_h5ad)
-    except (TypeError, anndata._io.utils.AnnDataReadError):
-        f = tables.open_file(filename_h5ad, mode='r+')
-        # these are empty
-        f.remove_node('/row_graphs')
-        f.remove_node('/col_graphs')
-        # rename to match AnnData data structure
-        f.rename_node('/row_attrs', 'obs')
-        f.rename_node('/col_attrs', 'var')
-        f.rename_node('/matrix', 'X')
-        f.close()
-        adata = scvelo.datasets.forebrain(filename_h5ad)
-
-    scvelo.pp.remove_duplicate_cells(adata)  # for forebrain
-    scvelo.pp.neighbors(adata)  # for forebrain
-    scvelo.pp.filter_and_normalize(adata)
-    scvelo.pp.moments(adata)
-    scvelo.tl.velocity(adata, mode='stochastic')
-
-    scvelo.tl.velocity_graph(adata)
-    scvelo.tl.velocity_pseudotime(adata)
-
-    scvelo.tl.umap(adata, n_components=umap_dimension)
-    scvelo.tl.velocity_embedding(adata, basis='umap')
-
-    return dict(
-        t=adata.obs.velocity_pseudotime,
-        pos=adata.obsm['X_umap'],
-        vel=adata.obsm['velocity_umap']
-    )
+        return dict(
+            t=adata.obs.velocity_pseudotime,
+            pos=adata.obsm['X_umap'],
+            vel=adata.obsm['velocity_umap']
+        )
 
 
-def download_pancreas(filename_h5ad, umap_dimension):
-    adata = scvelo.datasets.pancreas(filename_h5ad)
-
-    scvelo.pp.filter_and_normalize(adata)
-    scvelo.pp.moments(adata)
-    scvelo.tl.velocity(adata, mode='stochastic')
-
-    scvelo.tl.velocity_graph(adata)
-    scvelo.tl.velocity_pseudotime(adata)
-
-    scvelo.tl.umap(adata, n_components=umap_dimension)
-    scvelo.tl.velocity_embedding(adata, basis='umap')
-
-    return dict(
-        t=adata.obs.velocity_pseudotime,
-        pos=adata.obsm['X_umap'],
-        vel=adata.obsm['velocity_umap']
-    )
-
-
-def download_pbmc68k(filename_h5ad, umap_dimension):
-    adata = scvelo.datasets.pbmc68k(filename_h5ad)
-
-    scvelo.pp.filter_and_normalize(adata)
-    scvelo.pp.moments(adata)
-    scvelo.tl.velocity(adata, mode='stochastic')
-
-    scvelo.tl.velocity_graph(adata)
-    scvelo.tl.velocity_pseudotime(adata)
-
-    scvelo.tl.umap(adata, n_components=umap_dimension)
-    scvelo.tl.velocity_embedding(adata, basis='umap')
-
-    return dict(
-        t=adata.obs.velocity_pseudotime,
-        pos=adata.obsm['X_umap'],
-        vel=adata.obsm['velocity_umap']
-    )
-
-
-def split_train_val_test(ds, train_prec, val_prec, test_prec, rng_seed):
+def split_train_val_test(ds, frac_train, frac_val, frac_test, rng_seed):
     rng = np.random.default_rng(seed=rng_seed)
     idx = rng.permutation(len(ds))
-    split_idxs = (len(idx) * np.array([train_prec, 1 - val_prec - test_prec, 1 - test_prec])).astype(int)
+    split_idxs = (len(idx) * np.array([frac_train, 1 - frac_val - frac_test, 1 - frac_test])).astype(int)
     train, _, val, test = np.split(idx, split_idxs)
 
-    return ds[train], ds[val], ds[test]
+    return dict(train=ds[train], val=ds[val], test=ds[test])
 
 
-def get_dataset_df(cfg, rng_seed=0):
+def get_dataset_df(cfg, data_dir, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
-        if isinstance(cfg, cs.DatasetSimple):
-            df = generate_measurements_simple(cfg.num_pnts, cfg.epsilon)
-        elif isinstance(cfg, cs.DatasetOscillation):
-            df = generate_measurements_oscillation(cfg.num_pnts, cfg.epsilon)
-        elif isinstance(cfg, cs.DatasetBifurcation):
-            df = generate_measurements_bifurcation(cfg.num_pnts, cfg.epsilon)
-        elif isinstance(cfg, cs.DatasetForUMap):
-            data_dir = Path(cfg.data_dir)
-            file_processed = data_dir/cfg.filename_processed
-            dims = 1 + np.arange(cfg.umap_dimension)
+        if isinstance(cfg, datasets.SimpleMotif):
+            df = Motif.generate_simple(cfg)
+        elif isinstance(cfg, datasets.OscillationMotif):
+            df = Motif.generate_oscillation(cfg)
+        elif isinstance(cfg, datasets.BifurcationMotif):
+            df = Motif.generate_bifurcation(cfg)
+        elif isinstance(cfg, datasets.H5adUMap):
+            dims = np.arange(1, cfg.umap_dimension + 1)
             cols_pos = [f'x{i}' for i in dims]
             cols_vel = [f'v{i}' for i in dims]
-            if cfg.csv.load_saved and file_processed.exists():
-                df = pd.read_parquet(file_processed)
+            if (data_dir/cfg.processed_path).exists():
+                df = pd.read_parquet(data_dir/cfg.processed_path)
             else:
-                if cfg.dataset is cs.UMapDataset.BONEMARROW:
-                    data = download_bonemarrow(cfg, data_dir/cfg.filename_h5ad)
-                elif cfg.dataset is cs.UMapDataset.DENTATE_GYRUS:
-                    data = download_dentategyrus(cfg, data_dir/cfg.filename_h5ad)
-                elif cfg.dataset is cs.UMapDataset.FOREBRAIN:
-                    data = download_forebrain(cfg, data_dir/cfg.filename_h5ad)
-                elif cfg.dataset is cs.UMapDataset.PANCREAS:
-                    data = download_pancreas(cfg, data_dir/cfg.filename_h5ad)
-                elif cfg.dataset is cs.UMapDataset.PBMC68K:
-                    data = download_pbmc68k(cfg, data_dir/cfg.filename_h5ad)
-                else:
-                    raise ValueError(f'Unknown umap dataset: {cfg.dataset}')
+                adata = SCVeloDataset.download_h5ad(cfg, data_dir)
+                umap_data = SCVeloDataset.process_umap(cfg, adata)
                 data = np.concatenate((
-                    data['t'].to_numpy()[:, None],
-                    data['pos'], data['vel']
+                    umap_data['t'].to_numpy()[:, None],
+                    umap_data['pos'], umap_data['vel']
                 ), axis=1)
                 df = pd.DataFrame(
                     data=data,
                     columns=['t', *cols_pos, *cols_vel]
                 )
-                df.to_parquet(file_processed, index=False)
+                df.to_parquet(data_dir/cfg.processed_path, index=False)
         else:
             raise ValueError(f'Unknown dataset: {cfg}')
 
@@ -324,29 +251,32 @@ def get_dataset_df(cfg, rng_seed=0):
         return df
 
 
-def get_dataset(cfg, rng_seed=0):
+def get_dataset(cfg, data_dir, rng_seed=0):
     with pl.utilities.seed.isolate_rng():
         pl.seed_everything(rng_seed, workers=True)
-        if not (Path(cfg.data_dir)/'processed').exists():
-            df = get_dataset_df(cfg, rng_seed=rng_seed)
-            ds = Dataset(process_measurements(df, cfg.sparsify_step_time, cfg.num_neighbors, 0))
-            train, val, test = split_train_val_test(ds, train_prec=cfg.splits.train, val_prec=cfg.splits.val, test_prec=cfg.splits.test, rng_seed=rng_seed)
-            if cfg.train_max_size is not None:
-                train = train[:cfg.train_max_size]
-        else:
-            splits = [0, 0, 0]
-            splits = [Dataset(cfg, df_s, s) for df_s, s in zip(splits, ('train', 'val', 'test'))]
+        df = get_dataset_df(cfg, data_dir, rng_seed=rng_seed)
+        ds = Dataset(process_measurements(df, cfg.time_step_count_sparsify, cfg.neighbor_count, 0))
+        splits = split_train_val_test(ds, frac_train=cfg.frac_train, frac_val=cfg.frac_val, frac_test=cfg.frac_test, rng_seed=rng_seed)
+        if cfg.limit_batch_count_train:
+            splits['train'] = splits['train'][:cfg.batch_count_train]
 
-        return train, val, test
+        return splits
 
 
 @hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
-    engine = cs.get_engine()
-    cs.create_all(engine)
-    with cs.orm.Session(engine, expire_on_commit=False) as db:
-        cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
-        train, val, test = map(DatasetMerged, zip(*[get_dataset(v, rng_seed=cfg.rng_seed) for v in cfg.dataset.values()]))
+    engine = conf.get_engine()
+    conf.orm.create_all(engine)
+    with conf.sa.orm.Session(engine) as db:
+        cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+        pprint.pp(cfg)
+        splits = defaultdict(list)
+        for cfg_dataset in cfg.datasets:
+            for split, data in get_dataset(cfg_dataset, cfg.data_dir, rng_seed=cfg.rng_seed).items():
+                splits[split].append(data)
+        for k, data_lists in splits.items():
+            splits[k] = DatasetMerged(data_lists)
+        pprint.pp(splits)
         print('end')
 
 

@@ -1,6 +1,7 @@
 import enum
 
 import omegaconf
+import hydra_orm
 from hydra_orm import orm
 import sqlalchemy as sa
 
@@ -21,32 +22,47 @@ class Dataset(orm.InheritableTable):
 
 
 class SimpleMotif(Dataset):
-    data_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
-    epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
+    measurement_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
+    initial_condition_noise_epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
 
 
 class OscillationMotif(Dataset):
-    data_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
-    epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
+    measurement_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
+    initial_condition_noise_epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
 
 
 class BifurcationMotif(Dataset):
-    data_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
-    epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
+    measurement_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
+    initial_condition_noise_epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
 
 
-class UMapDataset(enum.Enum):
-    BONEMARROW = enum.auto()
-    DENTATE_GYRUS = enum.auto()
-    FOREBRAIN = enum.auto()
-    PANCREAS = enum.auto()
-    PBMC68K = enum.auto()
+class UMapDataset(str, enum.Enum):
+    BONEMARROW = 'BONEMARROW'
+    DENTATE_GYRUS = 'DENTATE_GYRUS'
+    FOREBRAIN = 'FOREBRAIN'
+    PANCREAS = 'PANCREAS'
+    PBMC68K = 'PBMC68K'
 
 
-class ForUMap(Dataset):
-    dataset: UMapDataset = orm.make_field(orm.ColumnRequired(sa.Enum(UMapDataset)), default=omegaconf.MISSING)
-
-    filename_h5ad: str = orm.make_field(orm.ColumnRequired(sa.String(40)), default=omegaconf.MISSING)
-    filename_processed: str = orm.make_field(orm.ColumnRequired(sa.String(40)), default=omegaconf.MISSING)
-
+class H5adUMap(Dataset):
+    dataset: UMapDataset = orm.make_field(orm.ColumnRequired(sa.Enum(UMapDataset)), default=UMapDataset.PANCREAS)
+    processed_filename: str = orm.make_field(orm.ColumnRequired(sa.String(8), index=True, unique=True), init=False, omegaconf_ignore=True)
     umap_dimension: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=2)
+
+    def __post_init__(self):
+        self.dataset = UMapDataset(self.dataset)
+
+    @property
+    def h5ad_path(self):
+        return f'{self.dataset}/{self.dataset}.h5ad'
+
+    @property
+    def processed_path(self):
+        return f'{self.dataset}/{self.processed_filename}.parquet'
+
+
+sa.event.listens_for(H5adUMap, 'before_insert')(
+    hydra_orm.utils.set_attr_to_func_value(H5adUMap, H5adUMap.processed_filename.key, hydra_orm.utils.generate_random_string)
+)
+
+
