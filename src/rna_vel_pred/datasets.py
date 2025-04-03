@@ -263,6 +263,16 @@ def get_dataset(cfg, data_dir, rng_seed=0):
         return splits
 
 
+def get_merged_dataset(cfg, data_dir, rng_seed=0):
+    splits = defaultdict(list)
+    for cfg_dataset in cfg.datasets:
+        for split, data in get_dataset(cfg_dataset, data_dir, rng_seed=rng_seed).items():
+            splits[split].append(data)
+    for k, data_lists in splits.items():
+        splits[k] = DatasetMerged(data_lists)
+    return splits
+
+
 @hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
     engine = conf.get_engine()
@@ -270,12 +280,7 @@ def main(cfg):
     with conf.sa.orm.Session(engine) as db:
         cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
         pprint.pp(cfg)
-        splits = defaultdict(list)
-        for cfg_dataset in cfg.datasets:
-            for split, data in get_dataset(cfg_dataset, cfg.data_dir, rng_seed=cfg.rng_seed).items():
-                splits[split].append(data)
-        for k, data_lists in splits.items():
-            splits[k] = DatasetMerged(data_lists)
+        splits = get_merged_dataset(cfg, cfg.data_dir, rng_seed=cfg.rng_seed)
         pprint.pp(splits)
         print('end')
 
