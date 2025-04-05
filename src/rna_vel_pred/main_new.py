@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 import pprint
 import sys
@@ -5,7 +6,9 @@ import sys
 import hydra
 from omegaconf import OmegaConf
 import lightning.pytorch as pl
+import pandas as pd
 import torch
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from pytorch_lightning.utilities import CombinedLoader
 from einops import reduce
@@ -37,7 +40,12 @@ class Lightning(pl.LightningModule):
         return DataLoader(self.splits['test'], batch_size=self.cfg.model.batch_size)
 
     def predict_dataloader(self):
-        return CombinedLoader(self.splits, mode='sequential')
+        return CombinedLoader({
+                s: DataLoader(data, batch_size=self.cfg.model.batch_size)
+                for s, data in self.splits.items()
+            },
+            mode='max_size'
+        )
 
     def loss(self, input, target):
         input_r2 = reduce(input**2, 'vel dim -> vel 1', 'sum')
@@ -64,11 +72,19 @@ class Lightning(pl.LightningModule):
         loss = self.loss(pred_vel, batch.poi_vel)
         return dict(loss=loss)
 
-    def predict_step(self, batch, batch_idx):
-        breakpoint()
-        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
-        loss = self.loss(pred_vel, batch.poi_vel)
-        return dict(loss=loss)
+    def predict_step(self, batches, _):
+        pred = {}
+        for split, batch in batches[0].items():
+            if batch is not None:
+                poi_vel_pred = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+                pred[split] = Data(
+                    poi_t=batch.poi_t,
+                    poi_pos=batch.poi_pos,
+                    poi_vel=batch.poi_vel,
+                    poi_vel_pred=poi_vel_pred,
+                    poi_measurement_id=batch.poi_measurement_id,
+                )
+        return pred
 
 
 @hydra.main(**utils.HYDRA_INIT)
@@ -112,7 +128,26 @@ def main(cfg):
     if cfg.fit:
         trainer.fit(lightning, ckpt_path=ckpt_path)
     if cfg.predict:
-        trainer.predict(lightning, ckpt_path=ckpt_path)
+        pred_splits_list = trainer.predict(lightning, ckpt_path=ckpt_path)
+        pred_splits = defaultdict(list)
+        for splits in pred_splits_list:
+            for split, data in splits.items():
+                pred_splits[split].append(data)
+        for split, data_list in pred_splits.items():
+            pred_splits[split] = next(iter(DataLoader(data_list, batch_size=len(data_list))))
+        dfs = []
+        for split, data in pred_splits.items():
+            df = pd.DataFrame(dict(
+                measurement_id=data.poi_measurement_id,
+                split=split,
+                t=data.poi_t,
+                **{f'x{i+1}': poi_pos_dim for i, poi_pos_dim in enumerate(data.poi_pos.T)},
+                **{f'v{i+1}': poi_vel_dim for i, poi_vel_dim in enumerate(data.poi_vel.T)},
+                **{f'v{i+1}_pred': poi_vel_pred_dim for i, poi_vel_pred_dim in enumerate(data.poi_vel_pred.T)},
+            ))
+            dfs.append(df)
+        df = pd.concat(dfs, ignore_index=True)
+        df.to_parquet(cfg.run_dir/cfg.prediction_filename)
 
 
 def get_run_dir(hydra_init=utils.HYDRA_INIT, commit=True):
