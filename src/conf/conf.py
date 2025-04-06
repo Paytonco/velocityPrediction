@@ -33,6 +33,7 @@ class Conf(orm.Table):
     rng_seed: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=2376999025)
     fit: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
     predict: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+    is_optuna_sweep: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
     datasets = orm.ManyToManyField(conf.datasets.Dataset, default_factory=list, enforce_element_type=False)
 

@@ -15,7 +15,7 @@ DIR_DATA = DIR_ROOT/'data'
 HYDRA_INIT = dict(version_base=None, config_path='../../conf', config_name='conf')
 
 
-def get_run_dir(hydra_init=HYDRA_INIT, commit=True):
+def get_run_dir(hydra_init=HYDRA_INIT, commit=True, engine_name='runs'):
     if '-m' in sys.argv or '--multirun' in sys.argv:
         raise ValueError("The flags '-m' and '--multirun' are not supported. Use GNU parallel instead.")
     with hydra.initialize(version_base=hydra_init['version_base'], config_path=hydra_init['config_path']):
@@ -26,7 +26,7 @@ def get_run_dir(hydra_init=HYDRA_INIT, commit=True):
                 overrides.append(a)
                 last_override = i
         cfg = hydra.compose(hydra_init['config_name'], overrides=overrides)
-        engine = conf.get_engine()
+        engine = conf.get_engine(name=engine_name)
         conf.orm.create_all(engine)
         with conf.sa.orm.Session(engine, expire_on_commit=False) as db:
             cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
