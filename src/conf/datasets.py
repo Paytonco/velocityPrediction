@@ -46,7 +46,7 @@ class UMapDataset(str, enum.Enum):
 
 class H5adUMap(Dataset):
     dataset: UMapDataset = orm.make_field(orm.ColumnRequired(sa.Enum(UMapDataset)), default=UMapDataset.PANCREAS)
-    processed_filename: str = orm.make_field(orm.ColumnRequired(sa.String(8), index=True, unique=True), init=False, omegaconf_ignore=True)
+    processed_filename: str = orm.make_field(orm.ColumnRequired(sa.String(8), index=True), init=False, omegaconf_ignore=True)
     umap_dimension: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=2)
 
     def __post_init__(self):
@@ -61,8 +61,20 @@ class H5adUMap(Dataset):
         return f'{self.dataset}/{self.processed_filename}.parquet'
 
 
-sa.event.listens_for(H5adUMap, 'before_insert')(
-    hydra_orm.utils.set_attr_to_func_value(H5adUMap, H5adUMap.processed_filename.key, hydra_orm.utils.generate_random_string)
-)
-
-
+@sa.event.listens_for(H5adUMap, 'before_insert')
+def set_processed_filename(mapper, connection, target):
+    processed_umap_dataset = connection.execute(
+        sa.select(H5adUMap.processed_filename)
+        .where(H5adUMap.dataset == target.dataset)
+        .where(H5adUMap.umap_dimension == target.umap_dimension)
+    )
+    processed_umap_dataset = list(zip(range(2), processed_umap_dataset))
+    assert len(processed_umap_dataset) <= 1
+    if len(processed_umap_dataset) == 1:
+        target.processed_filename = processed_umap_dataset[0][1][0]
+    else:
+        hydra_orm.utils.set_attr_to_func_value(
+            H5adUMap,
+            H5adUMap.processed_filename.key,
+            hydra_orm.utils.generate_random_string,
+        )(mapper, connection, target)
