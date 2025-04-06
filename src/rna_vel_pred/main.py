@@ -1,130 +1,113 @@
 from collections import defaultdict
-from pathlib import Path
+import logging
 import pprint
 import sys
-import logging
 
 import hydra
-import omegaconf
 from omegaconf import OmegaConf
-import torch
-import torch.nn.functional as F
 import lightning.pytorch as pl
-from torch_geometric.loader import DataLoader
-from torch_geometric.data import InMemoryDataset
 import pandas as pd
-import wandb
+import torch
+from torch_geometric.data import Data
+from torch_geometric.loader import DataLoader
+from pytorch_lightning.utilities import CombinedLoader
+from einops import reduce
 
-from rna_vel_pred import cs, callbacks, datasets, models, utils
+from conf import conf
+from rna_vel_pred import callbacks, datasets, models, loggers, utils
 
 
 log = logging.getLogger(__file__)
 
 
-def loss(input, target):
-    input_norm2 = input.pow(2).sum(1, keepdim=True)
-    # mse_loss \in [0, 4]. If the model outputs at least one zero vector,
-    # loss_zero_norm will be at least 4; otherwise, it is zero.
-    # Sum reduce is used because a mean reduce could be less than 4.
-    loss_zero_norm = 4*(1 - input_norm2).pow(2).sum()
-    return input.shape[1] * F.mse_loss(input, target) + loss_zero_norm
-
-
-class Runner(pl.LightningModule):
-    def __init__(self, cfg, model, splits):
+class Lightning(pl.LightningModule):
+    def __init__(self, cfg, splits, model):
         super().__init__()
         self.cfg = cfg
-        self.model = model
         self.splits = splits
+        self.model = model
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.model.parameters())
-
-    def loss(self, input, target):
-        return loss(input, target)
+        return torch.optim.Adam(self.parameters(), lr=self.cfg.model.learning_rate)
 
     def train_dataloader(self):
-        ds = self.splits['train']
-        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
+        return DataLoader(self.splits['train'], batch_size=self.cfg.model.batch_size, shuffle=self.cfg.model.shuffle_training_batches)
 
     def val_dataloader(self):
-        ds = self.splits['val']
-        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
+        return DataLoader(self.splits['val'], batch_size=self.cfg.model.batch_size)
 
     def test_dataloader(self):
-        ds = self.splits['test']
-        return DataLoader(ds, batch_size=self.cfg.trainer.batch_size)
+        return DataLoader(self.splits['test'], batch_size=self.cfg.model.batch_size)
 
     def predict_dataloader(self):
-        return torch.utils.data.DataLoader([
-            (s, next(iter(DataLoader(ds, batch_size=len(ds))))) for s, ds in self.splits.items()
-        ], collate_fn=lambda x: x[0])
+        return CombinedLoader({
+                s: DataLoader(data, batch_size=self.cfg.model.batch_size)
+                for s, data in self.splits.items()
+            },
+            mode='max_size'
+        )
+
+    def loss(self, input, target):
+        input_r2 = reduce(input**2, 'vel dim -> vel 1', 'sum')
+        loss_zero_norm = 2*(1 - input_r2).pow(2).sum()
+        loss_cosine = reduce(
+            0.5 * (input - target)**2,
+            'vel dim ->',
+            'sum',
+        )
+        return loss_cosine + loss_zero_norm
 
     def training_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
-        loss = self.loss(out, batch.poi_vel)
-        return loss
+        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        loss = self.loss(pred_vel, batch.poi_vel)
+        return dict(loss=loss)
 
     def validation_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
-        loss = self.loss(out, batch.poi_vel)
-        return loss
+        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        loss = self.loss(pred_vel, batch.poi_vel)
+        return dict(loss=loss)
 
     def test_step(self, batch, batch_idx):
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
-        loss = self.loss(out, batch.poi_vel)
-        return loss
+        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        loss = self.loss(pred_vel, batch.poi_vel)
+        return dict(loss=loss)
 
-    def predict_step(self, split_data, batch_idx):
-        split, batch = split_data
-        out = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
-        batch.poi_vel_pred = out
-        batch._slice_dict['poi_vel_pred'] = batch._slice_dict['poi_vel']
-        batch._inc_dict['poi_vel_pred'] = batch._inc_dict['poi_vel']
-        ds = InMemoryDataset(None)
-        ds.save(batch.cpu().to_data_list(), f'{self.cfg.run_dir}/pred_{split}.pt')
-        measurement_id, t, pos, vel = [batch[x].cpu().numpy()
-                                       for x in ['poi_measurement_id', 'poi_t', 'poi_pos', 'poi_vel_pred']]
-        df = pd.DataFrame(dict(
-            measurement_id=measurement_id,
-            t=t,
-            **{f'x{i+1}': x for i, x in enumerate(pos.T)},
-            **{f'v{i+1}': v for i, v in enumerate(vel.T)}
-        ))
-        df = df.sort_values('measurement_id', ignore_index=True)
-        df.to_csv(f'{self.cfg.run_dir}/pred_{split}.csv', index=False)
-        return True
+    def predict_step(self, batches, _):
+        pred = {}
+        for split, batch in batches[0].items():
+            if batch is not None:
+                poi_vel_pred = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+                pred[split] = Data(
+                    poi_t=batch.poi_t,
+                    poi_pos=batch.poi_pos,
+                    poi_vel=batch.poi_vel,
+                    poi_vel_pred=poi_vel_pred,
+                    poi_measurement_id=batch.poi_measurement_id,
+                )
+        return pred
 
 
 @hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
-    engine = cs.get_engine()
-    cs.create_all(engine)
-    with cs.orm.Session(engine, expire_on_commit=False) as db:
-        cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+    engine = conf.get_engine()
+    conf.orm.create_all(engine)
+    with conf.sa.orm.Session(engine) as db:
+        cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
         db.commit()
+        log.info('Command: python %s', ' '.join(sys.argv))
         pprint.pp(cfg)
-        log.info('Command: %s', ' '.join(sys.argv))
-        log.info(f'Outputs will be saved to: {cfg.run_dir}')
+        log.info('Output directory: %s', cfg.run_dir)
 
-    torch.set_default_dtype(torch.float64)  # must put here when calling main in a loop
+    pl.seed_everything(cfg.rng_seed)
 
-    splits = map(datasets.DatasetMerged, zip(*[
-        datasets.get_dataset(v, rng_seed=cfg.rng_seed)
-        for v in cfg.dataset
-    ]))
-    splits = {k: s for k, s in zip(('train', 'val', 'test'), splits)}
-    splits['train'] = splits['train'].shuffle()
-
-    logger = pl.loggers.TensorBoardLogger(cfg.run_dir, name='', version='tb_logs')
     trainer = pl.Trainer(
-        devices=cfg.trainer.devices,
-        accelerator=cfg.trainer.accelerator,
-        max_epochs=cfg.trainer.max_epochs,
-        logger=not cfg.trainer.logger or logger,
-        precision=64,
+        logger=loggers.CSVLogger(cfg.run_dir, name=None),
+        max_epochs=cfg.model.epoch_count,
+        accelerator=cfg.device,
+        check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
+        deterministic=True,
         callbacks=[
-            callbacks.PlotCB(),
+            callbacks.LogStats(),
             callbacks.ModelCheckpoint(
                 dirpath=cfg.run_dir,
                 filename='{epoch}',
@@ -132,32 +115,44 @@ def main(cfg):
                 save_top_k=-1,
                 save_on_train_epoch_end=False,
                 enable_version_counter=False,
-            )
+            ),
         ],
-        check_val_every_n_epoch=cfg.trainer.check_val_every_n_epoch,
-        deterministic=True
     )
 
-    if isinstance(cfg.model, cs.ModelTrained):
-        model = models.get_model(cfg.model.config.model, rng_seed=cfg.model.config.rng_seed)
-        ckpt_path = cfg.model.config.run_dir/cfg.model.ckpt_filename
-    else:
-        model = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
-        ckpt_path = None
+    splits = datasets.get_merged_dataset(cfg, cfg.data_dir, rng_seed=cfg.rng_seed)
 
-    runner = Runner(cfg, model, splits)
+    model, ckpt_path = models.get_model(cfg.model, rng_seed=cfg.rng_seed)
 
-    if cfg.trainer.fit:
-        trainer.fit(runner, ckpt_path=ckpt_path)
-    if cfg.trainer.pred:
-        trainer.predict(runner, ckpt_path=ckpt_path)
-        # TODO: ??? too complicated
-        df = pd.concat([pd.read_csv(f'{cfg.run_dir}/pred_{split}.csv') for split in ('train', 'val', 'test')])
-        df = df.set_index('measurement_id').sort_index()
-        df.to_csv(f'{cfg.run_dir}/pred.csv', index=False)
+    lightning = Lightning(cfg, splits, model)
+
+    if cfg.fit:
+        trainer.fit(lightning, ckpt_path=ckpt_path)
+    if cfg.predict:
+        pred_splits_list = trainer.predict(lightning, ckpt_path=ckpt_path)
+        pred_splits = defaultdict(list)
+        for splits in pred_splits_list:
+            for split, data in splits.items():
+                pred_splits[split].append(data)
+        for split, data_list in pred_splits.items():
+            pred_splits[split] = next(iter(DataLoader(data_list, batch_size=len(data_list))))
+        dfs = []
+        for split, data in pred_splits.items():
+            df = pd.DataFrame(dict(
+                measurement_id=data.poi_measurement_id,
+                split=split,
+                t=data.poi_t,
+                **{f'x{i+1}': poi_pos_dim for i, poi_pos_dim in enumerate(data.poi_pos.T)},
+                **{f'v{i+1}': poi_vel_dim for i, poi_vel_dim in enumerate(data.poi_vel.T)},
+                **{f'v{i+1}_pred': poi_vel_pred_dim for i, poi_vel_pred_dim in enumerate(data.poi_vel_pred.T)},
+            ))
+            dfs.append(df)
+        df = pd.concat(dfs, ignore_index=True)
+        df.to_parquet(cfg.run_dir/cfg.prediction_filename)
 
 
 def get_run_dir(hydra_init=utils.HYDRA_INIT, commit=True):
+    if '-m' in sys.argv or '--multirun' in sys.argv:
+        raise ValueError("The flags '-m' and '--multirun' are not supported. Use GNU parallel instead.")
     with hydra.initialize(version_base=hydra_init['version_base'], config_path=hydra_init['config_path']):
         last_override = None
         overrides = []
@@ -166,10 +161,10 @@ def get_run_dir(hydra_init=utils.HYDRA_INIT, commit=True):
                 overrides.append(a)
                 last_override = i
         cfg = hydra.compose(hydra_init['config_name'], overrides=overrides)
-        engine = cs.get_engine()
-        cs.create_all(engine)
-        with cs.orm.Session(engine, expire_on_commit=False) as db:
-            cfg = cs.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+        engine = conf.get_engine()
+        conf.orm.create_all(engine)
+        with conf.sa.orm.Session(engine, expire_on_commit=False) as db:
+            cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
             if commit and '-c' not in sys.argv:
                 db.commit()
                 cfg.run_dir.mkdir(exist_ok=True)
