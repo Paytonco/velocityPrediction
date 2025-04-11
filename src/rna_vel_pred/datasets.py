@@ -48,10 +48,11 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
     for i in range(data.num_nodes):
         label_idx, roll_by = divmod(i, sparsify_step_time)
         labels = data.labels.roll(-roll_by)[::sparsify_step_time]
-        edge_index_num_neighbors = tg.nn.knn_graph(labels, num_neighbors)
-        node_i = labels[edge_index_num_neighbors[0][edge_index_num_neighbors[1] == label_idx]]
-        node_j = torch.full(node_i.size(), i)
-        edge_index_nodes.append(torch.stack((node_i, node_j)))
+        labels = labels[labels.diff(prepend=labels[:1]+sparsify_step_time).abs() == sparsify_step_time]
+        neighbor_labels, poi_labels = tg.nn.knn_graph(labels, num_neighbors)
+        node_j = labels[neighbor_labels[poi_labels == label_idx]]
+        node_i = torch.full(node_j.size(), i)
+        edge_index_nodes.append(torch.stack((node_j, node_i)))
     # keep self-loops
     data.edge_index = torch.cat(edge_index_nodes, dim=1)
     data_keys = ('pos', 'vel', 't', 'labels', 'measurement_id')
