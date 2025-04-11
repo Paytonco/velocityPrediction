@@ -1,0 +1,23 @@
+{
+    "$schema": "https://raw.githubusercontent.com/mfussenegger/dapconfig-schema/master/dapconfig-schema.json",
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "python",
+            "request": "launch",
+            "name": "Launch main",
+            "program": "/home/reepoi/GitHub/velocityPrediction-new/src/rna_vel_pred/datasets.py",
+            "args": [
+                "model=First",
+                "datasets=[{_target_:conf.datasets.H5adUMap,dataset:PANCREAS}]"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "gpu",
+            "type": "promptString",
+            "description": "Pick a GPU"
+        }
+    ]
+}
