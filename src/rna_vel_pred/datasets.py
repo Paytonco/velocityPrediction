@@ -36,37 +36,25 @@ class Dataset(InMemoryDataset):
 
 def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_idx):
     measurements = measurements.sort_values('t', ignore_index=True)
+    poi_count = len(measurements)
     measurement_id = torch.tensor(measurements['measurement_id'].to_numpy())
     t = torch.tensor(measurements['t'].to_numpy())
     pos = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('x')]].to_numpy())
     vel = torch.tensor(measurements[[c for c in measurements.columns if c.startswith('v')]].to_numpy())
     vel = utils.normalize(vel)
-    data = Data(t=t, pos=pos, vel=vel, measurement_id=measurement_id)
 
-    data.labels = torch.arange(data.num_nodes, dtype=torch.long)
-    edge_index_nodes = []
-    for i in range(data.num_nodes):
-        label_idx, roll_by = divmod(i, sparsify_step_time)
-        labels = data.labels.roll(-roll_by)[::sparsify_step_time]
-        labels = labels[labels.diff(prepend=labels[:1]+sparsify_step_time).abs() == sparsify_step_time]
-        neighbor_labels, poi_labels = tg.nn.knn_graph(labels, num_neighbors)
-        node_j = labels[neighbor_labels[poi_labels == label_idx]]
-        node_i = torch.full(node_j.size(), i)
-        edge_index_nodes.append(torch.stack((node_j, node_i)))
-    # keep self-loops
-    data.edge_index = torch.cat(edge_index_nodes, dim=1)
-    data_keys = ('pos', 'vel', 't', 'labels', 'measurement_id')
-    data_values = zip(*(
-        tg.utils.unbatch(data[k][data.edge_index[0]], data.edge_index[1])
-        for k in data_keys
-    ))
+    node_names = torch.arange(poi_count, dtype=torch.long)
     data_list = []
-    for i, (pos, vel, t, labels, measurement_id) in enumerate(data_values):
+    for i in range(poi_count):
+        partition, partition_offset = divmod(i, sparsify_step_time)
+        candidates = node_names.roll(-partition_offset)[::sparsify_step_time]
+        candidates = candidates[candidates.diff(prepend=candidates[:1] + sparsify_step_time).abs() == sparsify_step_time]
+        neighbor_sets, all_partitions = tg.nn.knn_graph(candidates, num_neighbors)
+        node_j = candidates[neighbor_sets[all_partitions == partition]]
         neighborhood = Data(
-            poi_pos=data.pos[[i]], poi_vel=data.vel[[i]], poi_t=data.t[[i]],
-            poi_measurement_id=data.measurement_id[[i]],
-            pos=pos, vel=vel, t=t,
-            # labels=labels
+            poi_pos=pos[[i]], poi_vel=vel[[i]], poi_t=t[[i]],
+            poi_measurement_id=measurement_id[[i]],
+            pos=pos[node_j], vel=vel[node_j], t=t[node_j],
         )
         data_list.append(neighborhood)
 
