@@ -52,9 +52,9 @@ class Lightning(pl.LightningModule):
         loss_zero_norm = 2*(1 - input_r2).pow(2).sum()
         loss_cosine = reduce(
             0.5 * (input - target)**2,
-            'vel dim ->',
+            'vel dim -> vel',
             'sum',
-        )
+        ).mean()
         return loss_cosine + loss_zero_norm
 
     def training_step(self, batch, batch_idx):
