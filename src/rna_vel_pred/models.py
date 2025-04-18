@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch_geometric as tg
+from torch_geometric.data import Data
 import lightning.pytorch as pl
+from einops import repeat
 
 import conf.models
 from rna_vel_pred import utils
@@ -35,6 +37,52 @@ class First(nn.Module):
         diff_pos = pos - poi_pos[batch]
         r2 = diff_pos.pow(2).sum(1)
         weights = self.weighter(torch.stack((diff_t, r2), dim=1))
+        return utils.normalize(
+            tg.nn.global_add_pool(weights * diff_pos, batch)
+        )
+
+
+class GNN(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        # self.weighter = nn.Sequential()
+        # dims = [2, *([cfg.hidden.dim] * cfg.hidden.layers), 1]
+        # dims = [2, *([7] * 8), 1]
+        # for layer, (d_in, d_out) in enumerate(zip(dims, dims[1:])):
+        #     self.weighter.append(nn.Linear(d_in, d_out, bias=False))
+        #     if layer < len(dims) - 2:
+        #         self.weighter.append(nn.ReLU())
+        self.embed = nn.Sequential(
+            nn.Linear(4, 8),
+        )
+        self.gnn = tg.nn.Sequential('x, edge_index', [
+            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+            nn.Tanh(),
+            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+            nn.Tanh(),
+            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+            nn.Tanh(),
+            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+            nn.Tanh(),
+            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        ])
+        self.unembed = nn.Sequential(
+            nn.Linear(8, 1),
+        )
+
+    def forward(self, t, pos, poi_t, poi_pos, batch):
+        edge_index = batch.edge_index
+        batch = batch.batch
+        diff_t = torch.sign(t - poi_t[batch])
+        diff_pos = pos - poi_pos[batch]
+        signs = torch.sign(pos - poi_pos[batch])
+        # means = tg.nn.global_mean_pool(pos, batch)
+        # dot = ((means - poi_pos)[batch] * diff_pos).square().sum(1)
+        r = torch.sigmoid(diff_pos.square().sum(1).sqrt()) - .5
+        x = torch.cat((diff_t[:, None], r[:, None], signs), dim=1)
+        h = self.embed(x)
+        h = self.gnn(x=h, edge_index=edge_index)
+        weights = self.unembed(h)
         return utils.normalize(
             tg.nn.global_add_pool(weights * diff_pos, batch)
         )
