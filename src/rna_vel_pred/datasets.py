@@ -45,6 +45,11 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
 
     node_names = torch.arange(poi_count, dtype=torch.long)
     data_list = []
+    labels = torch.arange(num_neighbors, dtype=torch.long)
+    edge_index = torch.stack([
+        labels.repeat_interleave(num_neighbors),
+        labels.repeat(num_neighbors),
+    ])
     for i in range(poi_count):
         partition, partition_offset = divmod(i, sparsify_step_time)
         candidates = node_names.roll(-partition_offset)[::sparsify_step_time]
@@ -55,6 +60,7 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
             poi_pos=pos[[i]], poi_vel=vel[[i]], poi_t=t[[i]],
             poi_measurement_id=measurement_id[[i]],
             pos=pos[node_j], vel=vel[node_j], t=t[node_j],
+            edge_index=edge_index,
         )
         data_list.append(neighborhood)
 
