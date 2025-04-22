@@ -17,3 +17,7 @@ class Trainable(Model):
 
 class First(Trainable):
     pass
+
+
+class GNN(Trainable):
+    pass
