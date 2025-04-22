@@ -19,16 +19,19 @@ class First(nn.Module):
         #     if layer < len(dims) - 2:
         #         self.weighter.append(getattr(nn, cfg.activation)())
 
+        # works for simple/oscillation
+        # self.weighter = nn.Sequential(
+        #     nn.Linear(2, 2),
+        #     nn.ReLU(),
+        #     nn.Linear(2, 1),
+        # )
+        # other?
         self.weighter = nn.Sequential(
-            nn.Linear(2, 10),
+            nn.Linear(2, 2),
             nn.ReLU(),
-            nn.Linear(10, 20),
+            nn.Linear(2, 2),
             nn.ReLU(),
-            nn.Linear(20, 10),
-            nn.ReLU(),
-            nn.Linear(10, 5),
-            nn.ReLU(),
-            nn.Linear(5, 1),
+            nn.Linear(2, 1),
         )
 
     def forward(self, t, pos, poi_t, poi_pos, batch):
@@ -52,20 +55,21 @@ class GNN(nn.Module):
         #     self.weighter.append(nn.Linear(d_in, d_out, bias=False))
         #     if layer < len(dims) - 2:
         #         self.weighter.append(nn.ReLU())
-        self.embed = nn.Sequential(
-            nn.Linear(4, 8),
-        )
-        self.gnn = tg.nn.Sequential('x, edge_index', [
-            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
-            nn.Tanh(),
-            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
-            nn.Tanh(),
-            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
-            nn.Tanh(),
-            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
-            nn.Tanh(),
-            (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
-        ])
+        # self.embed = nn.Sequential(
+        #     nn.Linear(2, 8),
+        # )
+        self.gnn = tg.nn.PNA(2, 8, 3, aggregators=['mean', 'std', 'min', 'max'], scalers=['linear'],  deg=torch.ones(10, device='cuda')*10)
+        # self.gnn = tg.nn.Sequential('x, edge_index', [
+        #     (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        #     nn.ReLU(),
+        #     (tg.nn.GraphConv(8, 8), 'x, edge_index -> x'),
+        # ])
         self.unembed = nn.Sequential(
             nn.Linear(8, 1),
         )
@@ -75,12 +79,13 @@ class GNN(nn.Module):
         batch = batch.batch
         diff_t = torch.sign(t - poi_t[batch])
         diff_pos = pos - poi_pos[batch]
-        signs = torch.sign(pos - poi_pos[batch])
+        # signs = torch.sign(pos - poi_pos[batch])
         # means = tg.nn.global_mean_pool(pos, batch)
         # dot = ((means - poi_pos)[batch] * diff_pos).square().sum(1)
-        r = torch.sigmoid(diff_pos.square().sum(1).sqrt()) - .5
-        x = torch.cat((diff_t[:, None], r[:, None], signs), dim=1)
-        h = self.embed(x)
+        # r = torch.sigmoid(diff_pos.square().sum(1).sqrt()) - .5
+        r2 = diff_pos.square().sum(1)
+        h = torch.cat((diff_t[:, None], r2[:, None]), dim=1)
+        # h = self.embed(x)
         h = self.gnn(x=h, edge_index=edge_index)
         weights = self.unembed(h)
         return utils.normalize(
@@ -145,6 +150,8 @@ def get_model(cfg, rng_seed=0):
         pl.seed_everything(rng_seed, workers=True)
         if isinstance(cfg, conf.models.First):
             return First(cfg), None
+        elif isinstance(cfg, conf.models.GNN):
+            return GNN(cfg), None
         elif isinstance(cfg, conf.conf.Trained):
             model, _ = get_model(cfg.conf.model, rng_seed=cfg.conf.rng_seed)
             ckpt_path = cfg.conf.run_dir/cfg.ckpt_filename
