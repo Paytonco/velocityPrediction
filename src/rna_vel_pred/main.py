@@ -95,7 +95,7 @@ def main(cfg):
         cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
         db.commit()
         log.info('Command: python %s', ' '.join(sys.argv))
-        pprint.pp(cfg)
+        log.info(pprint.pformat(cfg))
         log.info('Output directory: %s', cfg.run_dir)
 
     pl.seed_everything(cfg.rng_seed)
@@ -151,6 +151,6 @@ def main(cfg):
 
 
 if __name__ == '__main__':
-    last_override, run_dir = utils.get_run_dir(commit=False)
+    last_override, run_dir = utils.get_run_dir()
     utils.set_run_dir(last_override, run_dir)
     main()
