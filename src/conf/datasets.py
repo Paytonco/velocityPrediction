@@ -67,6 +67,7 @@ def set_processed_filename(mapper, connection, target):
         sa.select(H5adUMap.processed_filename)
         .where(H5adUMap.dataset == target.dataset)
         .where(H5adUMap.umap_dimension == target.umap_dimension)
+        .distinct()
     )
     processed_umap_dataset = list(zip(range(2), processed_umap_dataset))
     assert len(processed_umap_dataset) <= 1
