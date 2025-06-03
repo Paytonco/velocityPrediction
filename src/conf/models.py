@@ -7,7 +7,7 @@ class Model(orm.InheritableTable):
 
 
 class Trainable(Model):
-    epoch_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=100)
+    epoch_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=50)
     batch_size: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
     shuffle_training_batches: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
     check_val_every_n_epoch: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
