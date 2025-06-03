@@ -15,7 +15,7 @@ class Dataset(orm.InheritableTable):
     frac_test: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.1)
     batch_size: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
 
-    limit_batch_count_train: bool = orm.make_field(orm.ColumnRequired(sa.Integer), default=False)
+    limit_batch_count_train: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
     batch_count_train: bool = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
 
     reverse_velocities: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
