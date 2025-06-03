@@ -1,4 +1,35 @@
 import copy
+import matplotlib.ticker
+
+
+class ScalarFormatter(matplotlib.ticker.ScalarFormatter):
+    def __init__(self, mapping, *args, **kwargs):
+        self.mapping = mapping
+        self.values = list(mapping.values())
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, x, pos=None):
+        x = self.mapping[x]
+        # self.format = r'$\mathdefault{%1.1f}$'
+        return super().__call__(x, pos=pos)
+
+    def _compute_offset(self):
+        locs = self.locs
+        self.locs = self.values
+        super()._compute_offset()
+        self.locs = locs
+
+    def _set_order_of_magnitude(self):
+        locs = self.locs
+        self.locs = self.values
+        super()._set_order_of_magnitude()
+        self.locs = locs
+
+    def _set_format(self):
+        locs = self.locs
+        self.locs = self.values
+        super()._set_format()
+        self.locs = locs
 
 
 def save_all_subfigures(plot, plot_name, format='pdf', renaming=None):
