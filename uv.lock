@@ -1108,7 +1108,7 @@ wheels = [
 [[package]]
 name = "hydra-orm"
 version = "0.1.0"
-source = { git = "https://github.com/reepoi/hydra-orm#13b98509bc62d42b0ed494b05fdad64bb06e3a73" }
+source = { git = "https://github.com/reepoi/hydra-orm?tag=v0.1.3#0776e5db5621da1cd09df479afefc11c25eb441e" }
 dependencies = [
     { name = "hydra-core" },
     { name = "pytest" },
@@ -3356,7 +3356,7 @@ requires-dist = [
     { name = "einops", specifier = ">=0.8.1" },
     { name = "h5py", specifier = "==3.8.0" },
     { name = "hydra-core", specifier = ">=1.3.2" },
-    { name = "hydra-orm", git = "https://github.com/reepoi/hydra-orm" },
+    { name = "hydra-orm", git = "https://github.com/reepoi/hydra-orm?tag=v0.1.3" },
     { name = "jupyterlab", specifier = ">=4.3.4" },
     { name = "lightning", specifier = ">=2.5.0.post0" },
     { name = "marimo", extras = ["recommended"], specifier = ">=0.12.10" },
