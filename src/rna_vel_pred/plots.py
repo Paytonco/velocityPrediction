@@ -1,5 +1,22 @@
 import copy
+import itertools
+
 import matplotlib.ticker
+
+
+ORDER_DATASET = dict(zip([
+    'PANCREAS',
+    'DENTATE_GYRUS',
+    'BONEMARROW',
+    'FOREBRAIN',
+], itertools.count()))
+
+
+ORDER_SPLIT = dict(zip([
+    'train',
+    'val',
+    'test',
+], itertools.count()))
 
 
 class ScalarFormatter(matplotlib.ticker.ScalarFormatter):
@@ -32,16 +49,19 @@ class ScalarFormatter(matplotlib.ticker.ScalarFormatter):
         self.locs = locs
 
 
-def save_all_subfigures(plot, plot_name, format='pdf', renaming=None):
+def save_all_subfigures(plot, plot_name, format='pdf', renaming=None, metadata_dataframe=None):
+    if metadata_dataframe is not None:
+        metadata_dataframe.write_csv(f'{plot_name}.csv')
     renaming = renaming or {}
     p = copy.deepcopy(plot)
-    p.figure.savefig(
-        f'{plot_name}.legend.{format}', format=format,
-        bbox_inches=p._legend.get_window_extent().transformed(p.figure.dpi_scale_trans.inverted()).expanded(1.007, 1.1)
-    )
+    if p._legend is not None:
+        p.figure.savefig(
+            f'{plot_name}.legend.{format}', format=format,
+            bbox_inches=p._legend.get_window_extent().transformed(p.figure.dpi_scale_trans.inverted()).expanded(1.007, 1.1)
+        )
 
-    # save each subplot
-    p._legend.set_visible(False)
+        # save each subplot
+        p._legend.set_visible(False)
     for (row, col, hue), data in p.facet_data():
         pp = copy.deepcopy(p)
         # ax = p.axes[row][col]
