@@ -5,8 +5,6 @@ import hydra
 from omegaconf import OmegaConf
 import torch.nn.functional as F
 
-from conf import conf
-
 
 DIR_SRC = Path(__file__).parent
 DIR_ROOT = (DIR_SRC/'..'/'..').resolve()
@@ -16,6 +14,8 @@ HYDRA_INIT = dict(version_base=None, config_path='../../conf', config_name='conf
 
 
 def get_run_dir(hydra_init=HYDRA_INIT, commit=True, engine_name='runs'):
+    from conf import conf
+
     if '-m' in sys.argv or '--multirun' in sys.argv:
         raise ValueError("The flags '-m' and '--multirun' are not supported. Use GNU parallel instead.")
     with hydra.initialize(version_base=hydra_init['version_base'], config_path=hydra_init['config_path']):
