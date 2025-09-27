@@ -1,5 +1,6 @@
 from hydra_orm import orm
 import sqlalchemy as sa
+import torch
 
 
 class Model(orm.InheritableTable):
@@ -17,6 +18,15 @@ class Trainable(Model):
 
 class First(Trainable):
     pass
+
+
+class Second(Trainable):
+    reorient_to_reference_orientation: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
+    reference_orientation_angle: float = orm.make_field(orm.ColumnRequired(sa.Double), default=torch.pi / 4)
+
+    use_angle_input: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+
+    predict_angle: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
 
 class GNN(Trainable):

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import hydra
 from omegaconf import OmegaConf
+import torch
 import torch.nn.functional as F
 
 
@@ -47,3 +48,23 @@ def set_run_dir(last_override, run_dir):
 
 def normalize(input, dim=1, eps=1e-7):
     return F.normalize(input, dim=dim, eps=eps)
+
+
+def mv(mat, vec):
+    return (vec[:, None] @ mat.mT).squeeze(1)
+
+
+def vcos(vec1, vec2):
+    return (vec1 * vec2).sum(1)
+
+
+def vsin(vec1, vec2):
+    return vec1[:, 0] * vec2[:, 1] - vec1[:, 1] * vec2[:, 0]
+
+
+def vangle(vec1, vec2, cos=None, sin=None):
+    if cos is None:
+        cos = vcos(vec1, vec2)
+    if sin is None:
+        sin = vsin(vec1, vec2)
+    return sin.sign() * cos.acos()

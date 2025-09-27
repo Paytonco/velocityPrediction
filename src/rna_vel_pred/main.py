@@ -58,17 +58,17 @@ class Lightning(pl.LightningModule):
         return loss_cosine + loss_zero_norm
 
     def training_step(self, batch, batch_idx):
-        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        pred_vel = self.model(batch)
         loss = self.loss(pred_vel, batch.poi_vel)
         return dict(loss=loss)
 
     def validation_step(self, batch, batch_idx):
-        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        pred_vel = self.model(batch)
         loss = self.loss(pred_vel, batch.poi_vel)
         return dict(loss=loss)
 
     def test_step(self, batch, batch_idx):
-        pred_vel = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+        pred_vel = self.model(batch)
         loss = self.loss(pred_vel, batch.poi_vel)
         return dict(loss=loss)
 
