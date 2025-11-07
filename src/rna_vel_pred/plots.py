@@ -1,6 +1,9 @@
 import copy
 import itertools
+from pathlib import Path
 
+import duckdb
+import polars as pl
 import matplotlib.ticker
 
 
@@ -79,3 +82,17 @@ def save_all_subfigures(plot, plot_name, format='pdf', renaming=None, metadata_d
         else:
             save_name = f'{plot_name}.{format}'
         pp.savefig(save_name, format=format, bbox_inches='tight', pad_inches=.06)
+
+
+def get_logged_metrics_file_paths(conf_rows, file_path_format='~/out/rna_vel_pred/runs/{}/metrics.csv'):
+    paths = duckdb.sql(f"""
+        select format({file_path_format!r}, alt_id) as path from conf_rows
+    """).pl()
+    exists = []
+    for f in paths['path']:
+        f = Path(f).expanduser()
+        exists.append(f.exists())
+    paths = pl.DataFrame(dict(
+        path=paths['path'], exists=exists,
+    ))
+    return duckdb.sql('select * from paths')
