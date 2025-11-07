@@ -76,7 +76,7 @@ class Lightning(pl.LightningModule):
         pred = {}
         for split, batch in batches[0].items():
             if batch is not None:
-                poi_vel_pred = self.model(batch.t, batch.pos, batch.poi_t, batch.poi_pos, batch)
+                poi_vel_pred = self.model(batch)
                 pred[split] = Data(
                     poi_t=batch.poi_t,
                     poi_pos=batch.poi_pos,
