@@ -27,6 +27,7 @@ class Second(Trainable):
     use_angle_input: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
     predict_angle: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+    predict_cos_sin: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
 
 class GNN(Trainable):

@@ -67,6 +67,7 @@ class Second(nn.Module):
         self.cfg = cfg
         act = GeneralReLU(leak=0.25, sub=0.3)
         in_dim = 3 if cfg.use_angle_input else 4
+        out_dim = 2 if cfg.predict_cos_sin else 1
 
         self.weighter = nn.Sequential(
             nn.Linear(in_dim, in_dim),
@@ -75,7 +76,7 @@ class Second(nn.Module):
             act,
             nn.Linear(in_dim, in_dim),
             act,
-            nn.Linear(in_dim, 1),
+            nn.Linear(in_dim, out_dim),
         )
 
         for m in self.modules():
@@ -144,6 +145,18 @@ class Second(nn.Module):
             rotation_from_orientation = torch.stack([
                 torch.stack([angle_from_orientation.cos(), -angle_from_orientation.sin()]),
                 torch.stack([angle_from_orientation.sin(), angle_from_orientation.cos()]),
+            ]).permute(2, 0, 1)
+            v = utils.mv(rotation_from_orientation, orientation)
+        elif self.cfg.predict_cos_sin:
+            """
+            WARNING: this is unlikely to work well because the predicted cos and sin
+            are not constrained to be consistent; that is, they are the cos and sin of different angles
+            """
+            features = tg.nn.global_mean_pool(features, batch.batch)
+            cos_from_orientation, sin_from_orientation = self.weighter(features).squeeze(1).mT
+            rotation_from_orientation = torch.stack([
+                torch.stack([cos_from_orientation, -sin_from_orientation]),
+                torch.stack([sin_from_orientation, cos_from_orientation]),
             ]).permute(2, 0, 1)
             v = utils.mv(rotation_from_orientation, orientation)
         else:
