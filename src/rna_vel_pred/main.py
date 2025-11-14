@@ -48,14 +48,14 @@ class Lightning(pl.LightningModule):
         )
 
     def loss(self, input, target):
-        input_r2 = reduce(input**2, 'vel dim -> vel 1', 'sum')
-        loss_zero_norm = 2*(1 - input_r2).pow(2).sum()
+        input_r2 = reduce(input.square(), 'vel dim -> vel', 'sum')
+        loss_zero_norm = (1 - input_r2).square()
         loss_cosine = reduce(
-            0.5 * (input - target)**2,
+            0.5 * (input - target).square(),
             'vel dim -> vel',
             'sum',
-        ).mean()
-        return loss_cosine + loss_zero_norm
+        )
+        return (loss_cosine + loss_zero_norm).mean()
 
     def training_step(self, batch, batch_idx):
         pred_vel = self.model(batch)
