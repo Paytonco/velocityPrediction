@@ -50,6 +50,7 @@ def process_measurements(measurements, sparsify_step_time, num_neighbors, poi_id
         labels.repeat_interleave(num_neighbors),
         labels.repeat(num_neighbors),
     ])
+    edge_index = edge_index[:, edge_index[0] != edge_index[1]]
     for i in range(poi_count):
         partition, partition_offset = divmod(i, sparsify_step_time)
         candidates = node_names.roll(-partition_offset)[::sparsify_step_time]
