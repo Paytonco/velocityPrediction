@@ -8,12 +8,13 @@ class Model(orm.InheritableTable):
 
 
 class Trainable(Model):
-    epoch_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=50)
-    batch_size: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
-    shuffle_training_batches: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
-    check_val_every_n_epoch: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=10)
+    max_steps: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=18_250)
+    val_check_interval: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=50)
 
-    learning_rate: float = orm.make_field(orm.ColumnRequired(sa.Double), default=1e-3)
+    batch_size: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=64)
+    shuffle_training_batches: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
+
+    learning_rate: float = orm.make_field(orm.ColumnRequired(sa.Double), default=1e-1)
 
 
 class First(Trainable):

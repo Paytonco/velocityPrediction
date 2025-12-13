@@ -32,7 +32,7 @@ class Lightning(pl.LightningModule):
         return dict(
             optimizer=optimizer,
             lr_scheduler=dict(
-                scheduler=torch.optim.lr_scheduler.OneCycleLR(optimizer, lr, total_steps=73200),
+                scheduler=torch.optim.lr_scheduler.OneCycleLR(optimizer, lr, total_steps=self.cfg.model.max_steps),
             ),
         )
 
@@ -107,11 +107,10 @@ def main(cfg):
 
     trainer = pl.Trainer(
         logger=loggers.CSVLogger(cfg.run_dir, name=None),
-        # max_epochs=cfg.model.epoch_count,
-        max_steps=73200,
+        max_steps=cfg.model.max_steps,
         accelerator=cfg.device,
         check_val_every_n_epoch=None,
-        val_check_interval=200,
+        val_check_interval=cfg.model.val_check_interval,
         deterministic=True,
         callbacks=[
             callbacks.LogStats(),
