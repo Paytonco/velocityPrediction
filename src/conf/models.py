@@ -21,7 +21,7 @@ class First(Trainable):
 
 
 class Second(Trainable):
-    reorient_to_reference_orientation: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=True)
+    reorient_to_reference_orientation: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
     reference_orientation_angle: float = orm.make_field(orm.ColumnRequired(sa.Double), default=torch.pi / 4)
 
     use_angle_input: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
