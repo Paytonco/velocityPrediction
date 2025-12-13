@@ -32,6 +32,7 @@ dependencies = [
     "torch>=2.5.1",
     "marimo[recommended]>=0.12.10",
     "polars>=1.27.1",
+    "altair[all]>=5.5.0",
 ]
 # uv pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
 
