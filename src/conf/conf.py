@@ -17,6 +17,11 @@ def get_engine(dir=str(utils.DIR_ROOT), name='runs'):
     return sa.create_engine(f'sqlite+pysqlite:///{dir}/{name}.sqlite')
 
 
+engine = get_engine()
+orm.create_all(engine)
+Session = sa.orm.sessionmaker(engine)
+
+
 class Conf(orm.Table):
     defaults: List[Any] = hydra_orm.utils.make_defaults_list([
         dict(model=omegaconf.MISSING),
