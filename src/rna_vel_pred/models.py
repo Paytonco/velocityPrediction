@@ -61,45 +61,65 @@ class GeneralReLU(nn.Module):
         return x
 
 
+class Linear(nn.Module):
+    def __init__(self, *args, act=None, **kwargs):
+        super().__init__()
+        self.linear = nn.Linear(*args, **kwargs)
+        self.act = act
+
+    def forward(self, input):
+        output = self.linear(input)
+        if self.act is not None:
+            output = self.act(output)
+        return output
+
+
+class GraphConv(nn.Module):
+    def __init__(self, *args, act=None, **kwargs):
+        super().__init__()
+        # self.conv = tg.nn.GraphConv(*args, **kwargs)
+        self.conv = tg.nn.GATConv(*args, **kwargs)
+        self.act = act
+
+    def forward(self, x=None, edge_index=None):
+        output = self.conv(x=x, edge_index=edge_index)
+        if self.act is not None:
+            output = self.act(x)
+        return output
+
+
 class Second(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.cfg = cfg
-        act = GeneralReLU(leak=0.25, sub=0.3)
+        act = GeneralReLU(leak=0.2, sub=0.1)
         in_dim = 3 if cfg.use_angle_input else 4
         out_dim = 2 if cfg.predict_cos_sin else 1
 
+        mult = 8
+        hidden_dim = mult * in_dim
         self.weighter = nn.Sequential(
-            nn.Linear(in_dim, in_dim),
-            act,
-            nn.Linear(in_dim, in_dim),
-            act,
-            nn.Linear(in_dim, in_dim),
-            act,
-            nn.Linear(in_dim, out_dim),
+            Linear(hidden_dim, hidden_dim, act=act),
+            Linear(hidden_dim, hidden_dim, act=act),
+            Linear(hidden_dim, hidden_dim, act=act),
+            Linear(hidden_dim, out_dim),
         )
 
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, a=act.leak)
-                nn.init.zeros_(m.bias)
-
-        conv = tg.nn.GraphConv(in_dim, in_dim, aggr='mean')
-        # conv = tg.nn.PNAConv(
-        #     in_dim, in_dim,
-        #     aggregators=['mean', 'std', 'min', 'max'],
-        #     scalers=['linear'],
-        #     deg=torch.ones(113, device='cuda')*113,
-        #     act=act,
-        # )
-        self.gnn = tg.nn.Sequential('x, edge_index', [
-            (conv, 'x, edge_index -> x'),
-            act,
-            (conv, 'x, edge_index -> x'),
-            act,
-            (conv, 'x, edge_index -> x'),
-            act,
+        self.gnn = tg.nn.Sequential('x, edge_index, batch', [
+            (nn.Identity(), 'x -> x'),
+            (Linear(in_dim, hidden_dim, act=act), 'x -> x'),
+            (Linear(hidden_dim, hidden_dim, act=act), 'x -> x'),
+            (Linear(hidden_dim, hidden_dim, act=act), 'x -> x'),
+            (GraphConv(hidden_dim, hidden_dim, aggr='mean', negative_slope=act.leak, heads=4, act=act), 'x, edge_index -> x'),
+            (tg.nn.LayerNorm(hidden_dim), 'x, batch -> x'),
         ])
+
+        for m in self.modules():
+            if isinstance(m, (nn.Linear, tg.nn.Linear)):
+                print(type(m))
+                nn.init.kaiming_normal_(m.weight, a=act.leak)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
         if self.cfg.reorient_to_reference_orientation:
             angle = torch.tensor(self.cfg.reference_orientation_angle)
@@ -108,10 +128,8 @@ class Second(nn.Module):
     def forward(self, batch):
         # normalize time and distance
         mbe_t = (batch.t - batch.poi_t[batch.batch])
-        mbe_t = (mbe_t - mbe_t.mean()) / mbe_t.std()
         diff_pos = batch.pos - batch.poi_pos[batch.batch]
         r = diff_pos.pow(2).sum(1).sqrt()
-        r = (r - r.mean()) / r.std()
 
         # deduce orientation of graph
         diff_pos_unit = utils.normalize(diff_pos)
@@ -136,7 +154,15 @@ class Second(nn.Module):
         orientation_batched = orientation[batch.batch]
         angular_features = self.get_angular_features(orientation_batched, diff_pos_unit)
         features = torch.stack((mbe_t, r, *angular_features), dim=1)
-        features = self.gnn(x=features, edge_index=batch.edge_index)
+        fmean = tg.nn.global_mean_pool(features, batch.batch)[batch.batch]
+        fdiff = features - fmean
+        node_count_per_graph = tg.utils.degree(batch.batch)[:, None]
+        fstd = (
+            tg.nn.global_mean_pool(fdiff.square(), batch.batch)
+            * (node_count_per_graph / (node_count_per_graph - 1))  # Bessel's correction
+        ).sqrt()[batch.batch]
+        features = self.gnn(x=fdiff / fstd, edge_index=batch.edge_index, batch=batch.batch)
+        # features = self.gnn(x=features, edge_index=batch.edge_index)
 
         # construct predicted velocity
         if self.cfg.predict_angle:

@@ -1,5 +1,4 @@
 from collections import defaultdict
-import logging
 import pprint
 import sys
 
@@ -13,11 +12,11 @@ from torch_geometric.loader import DataLoader
 from pytorch_lightning.utilities import CombinedLoader
 from einops import reduce
 
-from conf import conf
+import conf.conf
 from rna_vel_pred import callbacks, datasets, models, loggers, utils
 
 
-log = logging.getLogger(__file__)
+log = utils.getLoggerByFilename(__file__)
 
 
 class Lightning(pl.LightningModule):
@@ -28,7 +27,15 @@ class Lightning(pl.LightningModule):
         self.model = model
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.cfg.model.learning_rate)
+        lr = self.cfg.model.learning_rate
+        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        return dict(
+            optimizer=optimizer,
+            lr_scheduler=dict(
+                scheduler=torch.optim.lr_scheduler.OneCycleLR(optimizer, lr, total_steps=73200),
+            ),
+        )
+
 
     def train_dataloader(self):
         return DataLoader(self.splits['train'], batch_size=self.cfg.model.batch_size, shuffle=self.cfg.model.shuffle_training_batches)
@@ -89,10 +96,8 @@ class Lightning(pl.LightningModule):
 
 @hydra.main(**utils.HYDRA_INIT)
 def main(cfg):
-    engine = conf.get_engine()
-    conf.orm.create_all(engine)
-    with conf.sa.orm.Session(engine) as db:
-        cfg = conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
+    with conf.conf.Session() as db:
+        cfg = conf.conf.orm.instantiate_and_insert_config(db, OmegaConf.to_container(cfg, resolve=True))
         db.commit()
         log.info('Command: python %s', ' '.join(sys.argv))
         log.info(pprint.pformat(cfg))
@@ -102,18 +107,20 @@ def main(cfg):
 
     trainer = pl.Trainer(
         logger=loggers.CSVLogger(cfg.run_dir, name=None),
-        max_epochs=cfg.model.epoch_count,
+        # max_epochs=cfg.model.epoch_count,
+        max_steps=73200,
         accelerator=cfg.device,
-        check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
+        check_val_every_n_epoch=None,
+        val_check_interval=200,
         deterministic=True,
         callbacks=[
             callbacks.LogStats(),
             callbacks.ModelCheckpoint(
                 dirpath=cfg.run_dir,
-                filename='{epoch}',
+                filename='{step}',
                 save_last='link',
                 monitor='val_loss',
-                save_top_k=1,
+                save_top_k=2,
                 save_on_train_epoch_end=False,
                 enable_version_counter=False,
             ),

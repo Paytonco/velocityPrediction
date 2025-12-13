@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -44,6 +45,14 @@ def set_run_dir(last_override, run_dir):
         sys.argv.append(run_dir_override)
     else:
         sys.argv.insert(last_override + 1, run_dir_override)
+
+
+def filename_relative_to_dir_root(filename):
+    return Path(filename).relative_to(DIR_ROOT)
+
+
+def getLoggerByFilename(filename):
+    return logging.getLogger(str(filename_relative_to_dir_root(filename)))
 
 
 def normalize(input, dim=1, eps=1e-7):
