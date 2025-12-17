@@ -253,8 +253,6 @@ def get_dataset(cfg, data_dir, rng_seed=0):
         df = get_dataset_df(cfg, data_dir, rng_seed=rng_seed)
         ds = Dataset(process_measurements(df, cfg.time_step_count_sparsify, cfg.neighbor_count, 0))
         splits = split_train_val_test(ds, frac_train=cfg.frac_train, frac_val=cfg.frac_val, frac_test=cfg.frac_test, rng_seed=rng_seed)
-        if cfg.limit_batch_count_train:
-            splits['train'] = splits['train'][:cfg.batch_count_train]
 
         return splits
 
