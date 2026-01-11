@@ -12,6 +12,9 @@ ORDER_DATASET = dict(zip([
     'DENTATE_GYRUS',
     'BONEMARROW',
     'FOREBRAIN',
+    'SimpleMotif',
+    'OscillationMotif',
+    'BifurcationMotif',
 ], itertools.count()))
 
 
