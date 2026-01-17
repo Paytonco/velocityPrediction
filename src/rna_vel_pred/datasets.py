@@ -240,6 +240,7 @@ def get_dataset_df(cfg, data_dir, rng_seed=0):
             raise ValueError(f'Unknown dataset: {cfg}')
 
         if cfg.reverse_velocities:
+            df['t'] = 1 - df['t']
             df[cols_vel] = -df[cols_vel]
 
         df['measurement_id'] = range(len(df))
