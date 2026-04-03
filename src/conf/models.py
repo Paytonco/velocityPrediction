@@ -24,11 +24,14 @@ class First(Trainable):
 class Second(Trainable):
     reorient_to_reference_orientation: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
     reference_orientation_angle: float = orm.make_field(orm.ColumnRequired(sa.Double), default=torch.pi / 4)
+    direct_vel_toward_forward: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
     use_angle_input: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
     predict_angle: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
     predict_cos_sin: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+
+    dropout_probability: float = orm.make_field(orm.ColumnRequired(sa.Double), default=0.)
 
 
 class GNN(Trainable):

@@ -44,6 +44,8 @@ class Conf(orm.Table):
 
     model = orm.OneToManyField(conf.models.Model, default=omegaconf.MISSING)
 
+    use_directionless_loss: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+
     @property
     def run_dir(self):
         return Path(self.out_dir)/self.run_subdir/self.alt_id

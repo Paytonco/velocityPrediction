@@ -55,14 +55,24 @@ class Lightning(pl.LightningModule):
         )
 
     def loss(self, input, target):
-        input_r2 = reduce(input.square(), 'vel dim -> vel', 'sum')
-        loss_zero_norm = (1 - input_r2).square()
-        loss_cosine = reduce(
-            0.5 * (input - target).square(),
-            'vel dim -> vel',
-            'sum',
-        )
-        return (loss_cosine + loss_zero_norm).mean()
+        if self.cfg.use_directionless_loss:
+            input_r2 = reduce(input.square(), 'vel dim -> vel', 'sum')
+            loss_zero_norm = (1 - input_r2).square()
+            projection = reduce(
+                (input * target),
+                'vel dim -> vel',
+                'sum',
+            )
+            return (1 - projection.square()).square().mean()
+        else:
+            input_r2 = reduce(input.square(), 'vel dim -> vel', 'sum')
+            loss_zero_norm = (1 - input_r2).square()
+            loss_cosine = reduce(
+                0.5 * (input - target).square(),
+                'vel dim -> vel',
+                'sum',
+            )
+            return (loss_cosine + loss_zero_norm).mean()
 
     def training_step(self, batch, batch_idx):
         pred_vel = self.model(batch)

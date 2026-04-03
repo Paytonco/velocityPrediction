@@ -15,6 +15,7 @@ class Dataset(orm.InheritableTable):
     frac_test: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.1)
 
     reverse_velocities: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
+    scale_t_by_std_ratio: bool = orm.make_field(orm.ColumnRequired(sa.Boolean), default=False)
 
 
 class SimpleMotif(Dataset):

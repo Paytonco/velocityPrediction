@@ -222,6 +222,18 @@ def get_dataset_df(cfg, data_dir, rng_seed=0):
             dims = np.arange(1, cfg.umap_dimension + 1)
             cols_pos = [f'x{i}' for i in dims]
             cols_vel = [f'v{i}' for i in dims]
+            stds = {
+                datasets.UMapDataset.DENTATE_GYRUS: 0.004070028454668107,
+                datasets.UMapDataset.BONEMARROW: 0.03687916041279302,
+                datasets.UMapDataset.FOREBRAIN: 0.014993570128171072,
+            }
+            match cfg.dataset:
+                case datasets.UMapDataset.DENTATE_GYRUS:
+                    t_scale = stds[datasets.UMapDataset.BONEMARROW] / stds[datasets.UMapDataset.DENTATE_GYRUS]
+                case datasets.UMapDataset.BONEMARROW:
+                    t_scale = 1.
+                case datasets.UMapDataset.FOREBRAIN:
+                    t_scale = stds[datasets.UMapDataset.BONEMARROW] / stds[datasets.UMapDataset.FOREBRAIN]
             if (data_dir/cfg.processed_path).exists():
                 df = pd.read_parquet(data_dir/cfg.processed_path)
             else:
@@ -239,6 +251,8 @@ def get_dataset_df(cfg, data_dir, rng_seed=0):
         else:
             raise ValueError(f'Unknown dataset: {cfg}')
 
+        if cfg.scale_t_by_std_ratio:
+            df['t'] = t_scale * df['t']
         if cfg.reverse_velocities:
             df['t'] = 1 - df['t']
             df[cols_vel] = -df[cols_vel]

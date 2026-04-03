@@ -88,6 +88,19 @@ class GraphConv(nn.Module):
         return output
 
 
+class NeighborDropout(nn.Module):
+    def __init__(self, p):
+        super().__init__()
+        self.p = p
+
+    def forward(self, edge_index):
+        if self.training:
+            mask = torch.bernoulli(self.p + 0. * edge_index[0].to(torch.float32)).to(bool)
+            return edge_index[:, mask]
+        else:
+            return edge_index
+
+
 class Second(nn.Module):
     def __init__(self, cfg):
         super().__init__()
@@ -110,9 +123,11 @@ class Second(nn.Module):
             (Linear(in_dim, hidden_dim, act=act), 'x -> x'),
             (Linear(hidden_dim, hidden_dim, act=act), 'x -> x'),
             (Linear(hidden_dim, hidden_dim, act=act), 'x -> x'),
+            # (nn.Dropout1d(cfg.dropout_probability) if cfg.dropout_probability > 0 else nn.Identity(), 'x -> x'),
             (GraphConv(hidden_dim, hidden_dim, aggr='mean', negative_slope=act.leak, heads=4, act=act), 'x, edge_index -> x'),
             (tg.nn.LayerNorm(hidden_dim), 'x, batch -> x'),
         ])
+        self.dropout = NeighborDropout(cfg.dropout_probability) if cfg.dropout_probability > 0 else nn.Identity()
 
         for m in self.modules():
             if isinstance(m, (nn.Linear, tg.nn.Linear)):
@@ -127,6 +142,7 @@ class Second(nn.Module):
 
     def forward(self, batch):
         # normalize time and distance
+        batch.edge_index = self.dropout(batch.edge_index)
         mbe_t = (batch.t - batch.poi_t[batch.batch])
         diff_pos = batch.pos - batch.poi_pos[batch.batch]
         r = diff_pos.pow(2).sum(1).sqrt()
@@ -134,6 +150,11 @@ class Second(nn.Module):
         # deduce orientation of graph
         diff_pos_unit = utils.normalize(diff_pos)
         orientation = utils.normalize(tg.nn.global_mean_pool(diff_pos_unit, batch.batch))
+        is_forward_time = (mbe_t > 0)[:, None]
+        orientation_forward_only = utils.normalize(
+            tg.nn.global_add_pool(diff_pos_unit * is_forward_time, batch.batch)
+            / is_forward_time.sum()
+        )
 
         if self.cfg.reorient_to_reference_orientation:
             # compute rotation that rotates graph to the reference orientation
@@ -194,6 +215,11 @@ class Second(nn.Module):
         if self.cfg.reorient_to_reference_orientation:
             # restore original graph orientation
             v = utils.mv(rotation_to_reference.mT, v)
+
+        if self.cfg.direct_vel_toward_forward:
+            proj = (v * orientation_forward_only).sum(1, keepdim=True) * orientation_forward_only
+            normal = v - proj
+            v = normal - proj
 
         return v
 
