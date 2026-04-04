@@ -17,7 +17,7 @@ Additionally, this approach may be used to gain some insight into the regulatory
 Installation
 ============
 
-#. Install ``uv``:
+#. Install `uv <https://docs.astral.sh/uv/>`_:
 
    .. code:: bash
 
