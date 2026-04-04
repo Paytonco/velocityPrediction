@@ -33,8 +33,12 @@ dependencies = [
     "marimo[recommended]>=0.12.10",
     "polars>=1.27.1",
     "altair[all]>=5.5.0",
+    "pyg-lib>=0.4.0",
+    "torch-scatter>=2.1.2",
+    "torch-sparse>=0.6.18",
+    "torch-cluster>=1.6.3",
+    "torch-spline-conv>=1.2.2",
 ]
-# uv pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
 
 [project.scripts]
 rna-vel-pred = "rna_vel_pred:main"
@@ -43,6 +47,52 @@ rna-vel-pred = "rna_vel_pred:main"
 hydra-orm = [
     { git = "https://github.com/reepoi/hydra-orm", tag = "v0.1.3" },
 ]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-cu124", marker = "sys_platform == 'linux'" },
+]
+pyg_lib = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu124", marker = "sys_platform == 'linux'" },
+]
+torch_cluster = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu124", marker = "sys_platform == 'linux'" },
+]
+torch_scatter = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu124", marker = "sys_platform == 'linux'" },
+]
+torch_sparse = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu124", marker = "sys_platform == 'linux'" },
+]
+torch_spline_conv = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu124", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-geometric-cpu"
+url = "https://data.pyg.org/whl/torch-2.4.0+cpu.html"
+explicit = true
+format = "flat"
+
+[[tool.uv.index]]
+name = "pytorch-geometric-cu124"
+url = "https://data.pyg.org/whl/torch-2.4.0+cu124.html"
+explicit = true
+format = "flat"
 
 [build-system]
 requires = ["hatchling"]
