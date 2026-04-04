@@ -55,7 +55,7 @@ Supplementary Documentation
 * `Hydra <https://hydra.cc/docs/1.3/intro/>`_: The command-line inferface configuration library used to configure the experiments in this project.
 * `Hydra ORM <https://github.com/reepoi/hydra-orm>`_: Library for saving experiment configurations to an `SQLite <https://sqlite.org/>`_ database.
 * `PyTorch Geometric <https://pytorch-geometric.readthedocs.io/en/2.4.0/index.html>`_: The graph neural networks library utlized to implement the flocking models.
-* `PyTorch Lightning <https://lightning.ai/docs/pytorch/2.2.2/>`_: The library that handles the model training and logging to WandB.
+* `PyTorch Lightning <https://lightning.ai/docs/pytorch/2.2.2/>`_: The library that handles the model training and logging.
 
 Training the models
 ===================
