@@ -23,14 +23,6 @@ Installation
 
       curl -LsSf https://astral.sh/uv/install.sh | sh
 
-#. **Suggested:** Set the package cache directory of ``uv`` to a directory in a mounted drive.
-   For example,
-
-   .. code:: bash
-
-      echo "export UV_CACHE_DIR=/root/workspace/out/uv-cache" >> ~/.bashrc
-      source ~/.bashrc
-
 #. Install Python dependencies using ``uv``:
 
    .. code:: bash
