@@ -118,6 +118,36 @@ class Motif:
         return Motif._to_dataframe(t, pos, vel)
 
     @staticmethod
+    def generate_detransition(cfg):
+        N = cfg.measurement_count
+        dt = cfg.dt
+        sigma = cfg.sigma
+        T = cfg.T
+        n_steps = round(T / dt)
+        sqrt_dt = dt ** 0.5
+
+        x = 1.0 + cfg.initial_condition_noise_epsilon * torch.randn(N)
+        t_obs = T * torch.rand(N)
+        obs_steps = (t_obs / dt).long().clamp(0, n_steps - 1)
+
+        x_obs = x.clone()
+        for step in range(n_steps):
+            mask = obs_steps == step
+            if mask.any():
+                x_obs[mask] = x[mask]
+            a, b, c = x - 1, x - 2, x - 3
+            f = -10 * a * b * c * (b * c + a * c + a * b) + 1
+            x = x + f * dt + sigma * sqrt_dt * torch.randn(N)
+
+        a, b, c = x_obs - 1, x_obs - 2, x_obs - 3
+        vel_x = -10 * a * b * c * (b * c + a * c + a * b) + 1
+
+        pos = torch.stack((t_obs, x_obs), dim=1)
+        vel = torch.stack((torch.ones(N), vel_x), dim=1)
+
+        return Motif._to_dataframe(t_obs, pos, vel)
+
+    @staticmethod
     def _to_dataframe(t, pos, vel):
         return pd.DataFrame(
             torch.cat((t[:, None], pos, vel), axis=1),

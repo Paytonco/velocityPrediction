@@ -33,6 +33,14 @@ class BifurcationMotif(Dataset):
     initial_condition_noise_epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
 
 
+class DetransitionMotif(Dataset):
+    measurement_count: int = orm.make_field(orm.ColumnRequired(sa.Integer), default=4000)
+    initial_condition_noise_epsilon: float = orm.make_field(orm.ColumnRequired(sa.Double), default=.05)
+    dt: float = orm.make_field(orm.ColumnRequired(sa.Double), default=0.001)
+    sigma: float = orm.make_field(orm.ColumnRequired(sa.Double), default=0.5)
+    T: float = orm.make_field(orm.ColumnRequired(sa.Double), default=5.0)
+
+
 class UMapDataset(str, enum.Enum):
     BONEMARROW = 'BONEMARROW'
     DENTATE_GYRUS = 'DENTATE_GYRUS'
