@@ -248,6 +248,8 @@ def get_dataset_df(cfg, data_dir, rng_seed=0):
             df = Motif.generate_oscillation(cfg)
         elif isinstance(cfg, datasets.BifurcationMotif):
             df = Motif.generate_bifurcation(cfg)
+        elif isinstance(cfg, datasets.DetransitionMotif):
+            df = Motif.generate_detransition(cfg)
         elif isinstance(cfg, datasets.H5adUMap):
             dims = np.arange(1, cfg.umap_dimension + 1)
             cols_pos = [f'x{i}' for i in dims]
