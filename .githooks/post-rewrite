@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -u
+
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+REWRITE_MAP_FILE="${TMPDIR:-/tmp}/post-rewrite-map-$$.txt"
+
+cat > "$REWRITE_MAP_FILE"
+
+if [ -s "$REWRITE_MAP_FILE" ]; then
+  "$HOOK_DIR/_record_git_commit.sh" --stdin-rewrite-map < "$REWRITE_MAP_FILE"
+  "$HOOK_DIR/_record_git_commit.sh" --backfill 100
+else
+  "$HOOK_DIR/_record_git_commit.sh" --backfill 100
+fi
+
+rm -f "$REWRITE_MAP_FILE"
+exit 0

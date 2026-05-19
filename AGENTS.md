@@ -10,6 +10,7 @@
 - Dependencies are defined in `pyproject.toml` and locked in `uv.lock`; prefer `uv` commands.
 - Install deps: `uv sync`
 - Run management commands: `uv run python manage.py <command>`
+- Install versioned git hooks once per clone: `bash scripts/setup-git-hooks.sh`
 - Apply schema changes: `uv run python manage.py makemigrations` then `uv run python manage.py migrate`
 - Run tests: `uv run python manage.py test`
 - Run one app's tests: `uv run python manage.py test rna_vel_pred` (or `django_experiment_tracker`)
@@ -21,3 +22,9 @@
 
 ## Current repo state caveats
 - `README.rst` is empty; do not rely on it for workflow guidance.
+
+## GitCommit automation
+- Hooks are versioned under `.githooks/` and configured via `core.hooksPath`; never edit `.git/hooks/` directly in this repo.
+- `post-commit` and `post-merge` run `record_git_commit`; `post-rewrite` parses stdin rewrite maps and also backfills last 100 commits.
+- Hooks are intentionally non-blocking: commit/merge/rewrite should continue even if DB recording fails.
+- Manual recovery commands: `uv run python manage.py record_git_commit` and `uv run python manage.py record_git_commit --backfill 100`.

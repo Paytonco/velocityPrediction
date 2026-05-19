@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -u
+
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+"$HOOK_DIR/_record_git_commit.sh"
+exit 0
