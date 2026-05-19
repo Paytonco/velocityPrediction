@@ -1,6 +1,7 @@
 import random
 import string
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -36,15 +37,36 @@ class GitCommit(models.Model):
         return f'{self.commit_time}: {self.branch} ({self.commit_sha})'
 
 
+class ParameterEnumType(models.TextChoices):
+    STRING = ('str', _('String'))
+    BOOL = ('bool', _('Boolean'))
+    INT = ('int', _('Integer'))
+    FLOAT = ('float', _('Float'))
+
+
 class ParameterEnum(models.Model):
     """
     Enum values assignable to a parameter.
     """
     parameter_enum_name = models.CharField(max_length=100, unique=True)
     parameter_enum_description = models.CharField(max_length=100, blank=True)
+    parameter_enum_type = models.CharField(max_length=max(map(len, ParameterEnumType)), choices=ParameterEnumType)
 
     def __str__(self):
-        return self.parameter_enum_name
+        return f'{self.parameter_enum_name} ({ParameterEnumType(self.parameter_enum_type).label})'
+
+    def parse_value(self, value):
+        match self.parameter_enum_type:
+            case ParameterEnumType.BOOL:
+                if value != 'True' and value != 'False':
+                    raise ValueError("Boolean string value must be either 'True' or 'False'")
+                return value == 'True'
+            case ParameterEnumType.INT:
+                return int(value)
+            case ParameterEnumType.FLOAT:
+                return float(value)
+            case _:
+                return value
 
 
 class ParameterEnumValue(models.Model):
@@ -56,6 +78,12 @@ class ParameterEnumValue(models.Model):
 
     def __str__(self):
         return self.parameter_enum_value
+
+    def clean(self):
+        try:
+            self.parameter_enum_value = str(self.parameter_enum.parse_value(self.parameter_enum_value))
+        except ValueError as e:
+            raise ValidationError(str(e))
 
 
 class Parameter(models.Model):
