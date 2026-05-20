@@ -6,6 +6,7 @@ readme = "README.rst"
 requires-python = ">=3.10"
 dependencies = [
     "django>=5.2.14",
+    "django-experiment-tracker",
     "marimo>=0.23.6",
     "polars[pyarrow]>=1.40.1",
     "scvelo>=0.3.4",
@@ -21,3 +22,6 @@ dev = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "project.settings"
 python_files = ["test_*.py", "*_test.py", "tests.py"]
+
+[tool.uv.sources]
+django-experiment-tracker = { path = "../django-experiment-tracker", editable = true }
