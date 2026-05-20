@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import subprocess
 from datetime import datetime
 
@@ -11,6 +9,8 @@ from django_experiment_tracker.models import GitCommit
 
 class Command(BaseCommand):
     help = "Record git commit metadata into django_experiment_tracker.GitCommit"
+    output_transaction = True
+    requires_migrations_checks = True
 
     def add_arguments(self, parser):
         parser.add_argument(

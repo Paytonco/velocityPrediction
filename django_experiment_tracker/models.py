@@ -37,6 +37,13 @@ class GitCommit(models.Model):
         return f'{self.commit_time}: {self.branch} ({self.commit_sha})'
 
 
+class Tag(models.Model):
+    tag_value = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return self.tag_value
+
+
 class ParameterEnumType(models.TextChoices):
     STRING = ('str', _('String'))
     BOOL = ('bool', _('Boolean'))
@@ -116,6 +123,7 @@ class Experiment(models.Model):
     time_created = models.DateTimeField(blank=True, db_default=models.functions.Now())
     time_completed = models.DateTimeField(blank=True, null=True)
     exit_code = models.IntegerField(blank=True, null=True)
+    tags = models.ManyToManyField(Tag)
 
     class Meta:
         abstract = True
