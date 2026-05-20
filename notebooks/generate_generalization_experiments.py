@@ -16,8 +16,8 @@ with app.setup:
     from django.db.models import Count, Q
 
     from django_experiment_tracker.models import GitCommit, Parameter, ParameterEnum, ParameterGroup, Tag
+    from django_experiment_tracker.experiment_generation import get_or_create_experiment
     from rna_vel_pred.models import Experiment, ExperimentParameter
-    from rna_vel_pred.utils import get_or_create_experiment
 
 
 @app.function
@@ -92,7 +92,9 @@ def _(experiment_parameters, total):
     experiment_parameter_rows_to_create = []
     for _eps in mo.status.progress_bar(experiment_parameters, total=total):
         existed, (experiment_row, experiment_parameter_rows) = get_or_create_experiment(
-            _eps,
+            experiment_model=Experiment,
+            experiment_parameter_model=ExperimentParameter,
+            experiment_parameters=_eps,
             experiment_model_kwargs=dict(git_commit=get_latest_commit()),
         )
         if not existed:

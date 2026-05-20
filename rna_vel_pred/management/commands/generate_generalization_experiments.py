@@ -1,8 +1,8 @@
-from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
+from django.core.management.base import BaseCommand
 
-import rna_vel_pred.utils
+from django_experiment_tracker.experiment_generation import create_experiments_from_parameters
 from notebooks.generate_generalization_experiments import build_experiment_parameters, get_latest_commit, get_tags
+from rna_vel_pred.models import Experiment, ExperimentParameter
 
 
 class Command(BaseCommand):
@@ -24,15 +24,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        # latest_git_commit = GitCommit.objects.order_by('-commit_time').first()
-        # try:
-        #     no_group_param_group = ParameterGroup.objects.get(parameter_group_name='-NoGroup-')
-        # except ParameterGroup.DoesNotExist as e:
-        #     raise CommandError(f"{e} Query: parameter_group_name={'-NoGroup-'!r}")
-        rna_vel_pred.utils.create_experiments_from_parameters(
-            build_experiment_parameters(),
-            dict(git_commit=get_latest_commit()),
-            get_tags(),
+        create_experiments_from_parameters(
+            experiment_model=Experiment,
+            experiment_parameter_model=ExperimentParameter,
+            experiment_parameters=build_experiment_parameters(),
+            experiment_model_kwargs=dict(git_commit=get_latest_commit()),
+            tags=get_tags(),
         )
         self.stdout.write(self.style.SUCCESS('Done!'))
-
