@@ -9,7 +9,14 @@ dependencies = [
     "django-experiment-tracker",
     "marimo>=0.23.6",
     "polars[pyarrow]>=1.40.1",
+    "pyg-lib>=0.6.0",
     "scvelo>=0.3.4",
+    "torch==2.8",
+    "torch-cluster>=1.6.3",
+    "torch-geometric>=2.7.0",
+    "torch-scatter>=2.1.2",
+    "torch-sparse>=0.6.18",
+    "torch-spline-conv>=1.2.2",
     "tqdm>=4.67.3",
 ]
 
@@ -25,3 +32,49 @@ python_files = ["test_*.py", "*_test.py", "tests.py"]
 
 [tool.uv.sources]
 django-experiment-tracker = { path = "../django-experiment-tracker", editable = true }
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-cu129", marker = "sys_platform == 'linux'" },
+]
+pyg_lib = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu129", marker = "sys_platform == 'linux'" },
+]
+torch_cluster = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu129", marker = "sys_platform == 'linux'" },
+]
+torch_scatter = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu129", marker = "sys_platform == 'linux'" },
+]
+torch_sparse = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu129", marker = "sys_platform == 'linux'" },
+]
+torch_spline_conv = [
+  { index = "pytorch-geometric-cpu", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-geometric-cu129", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-geometric-cpu"
+url = "https://data.pyg.org/whl/torch-2.8.0+cpu.html"
+explicit = true
+format = "flat"
+
+[[tool.uv.index]]
+name = "pytorch-geometric-cu129"
+url = "https://data.pyg.org/whl/torch-2.8.0+cu129.html"
+explicit = true
+format = "flat"
