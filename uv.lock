@@ -732,6 +732,15 @@ wheels = [
 ]
 
 [[package]]
+name = "einops"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/77/850bef8d72ffb9219f0b1aac23fbc1bf7d038ee6ea666f331fa273031aa2/einops-0.8.2.tar.gz", hash = "sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827", size = 56261 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/09/f8d8f8f31e4483c10a906437b4ce31bdf3d6d417b73fe33f1a8b59e34228/einops-0.8.2-py3-none-any.whl", hash = "sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193", size = 65638 },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2979,6 +2988,7 @@ dependencies = [
     { name = "django", version = "5.2.14", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "django", version = "6.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "django-experiment-tracker" },
+    { name = "einops" },
     { name = "marimo" },
     { name = "polars", extra = ["pyarrow"] },
     { name = "pyg-lib", version = "0.6.0+pt28cpu", source = { registry = "https://data.pyg.org/whl/torch-2.8.0+cpu.html" }, marker = "sys_platform != 'linux'" },
@@ -3013,6 +3023,7 @@ dev = [
 requires-dist = [
     { name = "django", specifier = ">=5.2.14" },
     { name = "django-experiment-tracker", editable = "../django-experiment-tracker" },
+    { name = "einops", specifier = ">=0.8.2" },
     { name = "marimo", specifier = ">=0.23.6" },
     { name = "polars", extras = ["pyarrow"], specifier = ">=1.40.1" },
     { name = "pyg-lib", marker = "sys_platform != 'linux'", specifier = ">=0.6.0", index = "https://data.pyg.org/whl/torch-2.8.0+cpu.html" },
