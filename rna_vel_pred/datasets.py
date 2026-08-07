@@ -160,7 +160,7 @@ def process_forebrain():
 
 
 if __name__ == '__main__':
-    rng = np.random.default_rng(seed=42)
-    t, pos, vel = get_pancreas()
-    df = make_measurement_dataframe(t, pos, vel)
-    print(df)
+    _measurement_count = 4000
+    _rng = np.random.default_rng(seed=42)
+    dataset = make_measurement_dataset(*get_simple_motif(_rng, _measurement_count, 0.05))
+    print(dataset)
