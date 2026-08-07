@@ -6,10 +6,12 @@ app = marimo.App(width="medium")
 with app.setup:
     import os
     from pathlib import Path
+    from functools import partial
 
     import marimo as mo
     import seaborn as sns
     import matplotlib.pyplot as plt
+    import xarray as xr
     pt = 1./72.27 # Hundreds of years of history... 72.27 points to an inch.
 
     jour_sizes = {"PRD": {"onecol": 246.*pt, "twocol": 510.*pt},
@@ -47,34 +49,46 @@ def _():
 
 
 @app.function
-def make_plot(df):
+def make_plot(dataset):
     fig_width = jour_sizes['IEEEtran']['twocol'] / 4
     fig, ax = plt.subplots(figsize=(fig_width, fig_width / golden))
     fig.subplots_adjust(left=0.20, right=0.98, bottom=0.30, top=0.95)
+
+    position = dataset['position']
+    velocity = dataset['velocity']
+
+    x = position.sel(component='x_1')
+    y = position.sel(component='x_2')
+    u = velocity.sel(component='x_1')
+    v = velocity.sel(component='x_2')
+
     ax.scatter(
-        'pos_1',
-        'pos_2',
-        data=df,
+        x, y,
         facecolors='none',
         edgecolors='tab:blue',
         s=15,
     )
-    ax.quiver(df['pos_1'], df['pos_2'], df['vel_1'], df['vel_2'])
+    ax.quiver(x, y, u, v)
     ax.set(xlabel='$x_1$', ylabel='$x_2$')
+
     return fig, ax
 
 
 @app.function
-def make_plot_pseudotime(df):
+def make_plot_pseudotime(dataset):
     fig_width = jour_sizes['IEEEtran']['twocol'] / 2
     fig, ax = plt.subplots(figsize=(fig_width, fig_width / golden))
     fig.subplots_adjust(left=0.13, right=0.99, bottom=0.15, top=0.99)
+    
+    position = dataset['position']
+    x = position.sel(component='x_1')
+    y = position.sel(component='x_2')
+    t = dataset.coords['pseudotime']
+    
     ax.scatter(
-        'pos_1',
-        'pos_2',
-        data=df,
+        x, y,
         facecolors='none',
-        c='t',
+        c=t,
         cmap='viridis',
         vmin=0,
         vmax=1,
@@ -104,12 +118,18 @@ def _():
     return
 
 
+@app.function
+def subsample_dataset(rng, dataset, subsample_frac):
+    return dataset.isel(measurement=rng.choice(dataset.sizes['measurement'], size=int(subsample_frac * dataset.sizes['measurement']), replace=False))
+
+
 @app.cell
 def _(seed):
-    _df = datasets.make_measurement_dataframe(
-        *datasets.generate_simple_motif(np.random.default_rng(seed=seed), 4000, 0.05)
-    ).sample(fraction=.005, seed=seed)
-    _fig, _ax = make_plot(_df)
+    _measurement_count = 4000
+    _rng = np.random.default_rng(seed=seed)
+    _fig, _ax = make_plot(subsample_dataset(_rng, datasets.make_measurement_dataset(
+        *datasets.get_simple_motif(_rng, _measurement_count, 0.05)
+    ), 0.005))
     _fig.savefig(save_dir/'DatasetMotifSimple.pdf')
     _fig.savefig('DatasetMotifSimple.pdf')
     _fig
@@ -118,10 +138,11 @@ def _(seed):
 
 @app.cell
 def _(seed):
-    _df = datasets.make_measurement_dataframe(
-        *datasets.generate_oscillation_motif(np.random.default_rng(seed=seed), 4000, 0.05)
-    ).sample(fraction=.01, seed=seed)
-    _fig, _ax = make_plot(_df)
+    _measurement_count = 4000
+    _rng = np.random.default_rng(seed=seed)
+    _fig, _ax = make_plot(subsample_dataset(_rng, datasets.make_measurement_dataset(
+        *datasets.get_oscillation_motif(_rng, _measurement_count, 0.05)
+    ), 0.01))
     _fig.savefig(save_dir/'DatasetMotifOscillation.pdf')
     _fig
     return
@@ -129,11 +150,13 @@ def _(seed):
 
 @app.cell
 def _(seed):
-    _df = datasets.make_measurement_dataframe(
-        *datasets.generate_bifurcation_motif(np.random.default_rng(seed=seed), 4000, 0.05)
-    ).sample(fraction=.008, seed=seed)
-    _fig, _ax = make_plot(_df)
-    _max = (_df['pos_2'] - 1).abs().max()
+    _measurement_count = 4000
+    _rng = np.random.default_rng(seed=seed)
+    _dataset = datasets.make_measurement_dataset(
+        *datasets.get_bifurcation_motif(_rng, _measurement_count, 0.05)
+    )
+    _fig, _ax = make_plot(subsample_dataset(_rng, _dataset, 0.008))
+    _max = np.abs(_dataset['position'].sel(component='x_2')).max()
     _ax.set_ylim((-_max + 1, _max + 1))
     _fig.savefig(save_dir/'DatasetMotifBifurcation.pdf')
     _fig
@@ -142,12 +165,11 @@ def _(seed):
 
 @app.cell
 def _(seed):
-    _df = datasets.make_measurement_dataframe(
-        *datasets.generate_detransition_motif(np.random.default_rng(seed=seed), 4000, 0.05)
-    ).sample(fraction=.08, seed=seed)
-    _fig, _ax = make_plot(_df)
-    # _max = (_df['pos_2'] - 1).abs().max()
-    # _ax.set_ylim((-_max + 1, _max + 1))
+    _measurement_count = 4000
+    _rng = np.random.default_rng(seed=seed)
+    _fig, _ax = make_plot(subsample_dataset(_rng, datasets.make_measurement_dataset(
+        *datasets.get_detransition_motif(_rng, _measurement_count, 0.05)
+    ), 0.08))
     _fig.savefig(save_dir/'DatasetMotifDetransition.pdf')
     _fig
     return
@@ -155,10 +177,18 @@ def _(seed):
 
 @app.cell
 def _():
-    _df = datasets.make_measurement_dataframe(
-        *datasets.get_pancreas()
-    )
-    _fig, _ax = make_plot_pseudotime(_df)
+    raw_data_dir = Path('data')
+    processed_data_dir = Path('data/processed')
+    processed_data_dir.mkdir(parents=True, exist_ok=True)
+    return processed_data_dir, raw_data_dir
+
+
+@app.cell
+def _(processed_data_dir, raw_data_dir):
+    _fig, _ax = make_plot_pseudotime(datasets.get_dataset(
+        processed_file_path=processed_data_dir/'pancreas'/'pancreas.nc',
+        process_dataset_func=partial(datasets.process_pancreas, raw_data_dir/'pancreas'/'pancreas.h5ad'),
+    ))
     _fig.savefig(save_dir/'DatasetPancreas.pdf')
     _fig.savefig('DatasetPancreas.pdf')
     _fig
@@ -166,11 +196,20 @@ def _():
 
 
 @app.cell
-def _():
-    _df = datasets.make_measurement_dataframe(
-        *datasets.get_dentate_gyrus()
+def _(processed_data_dir, raw_data_dir):
+    datasets.get_dataset(
+        processed_file_path=processed_data_dir/'pancreas'/'pancreas.nc',
+        process_dataset_func=partial(datasets.process_pancreas, raw_data_dir/'pancreas'/'pancreas.h5ad'),
     )
-    _fig, _ax = make_plot_pseudotime(_df)
+    return
+
+
+@app.cell
+def _(processed_data_dir, raw_data_dir):
+    _fig, _ax = make_plot_pseudotime(datasets.get_dataset(
+        processed_file_path=processed_data_dir/'dentate_gyrus'/'dentate_gyrus.nc',
+        process_dataset_func=partial(datasets.process_dentate_gyrus, raw_data_dir/'dentate_gyrus'/'dentate_gyrus.h5ad'),
+    ))
     _fig.savefig(save_dir/'DatasetDentateGyrus.pdf')
     _fig.savefig('DatasetDentateGyrus.pdf')
     _fig
@@ -178,11 +217,11 @@ def _():
 
 
 @app.cell
-def _():
-    _df = datasets.make_measurement_dataframe(
-        *datasets.get_bonemarrow()
-    )
-    _fig, _ax = make_plot_pseudotime(_df)
+def _(processed_data_dir, raw_data_dir):
+    _fig, _ax = make_plot_pseudotime(datasets.get_dataset(
+        processed_file_path=processed_data_dir/'bonemarrow'/'bonemarrow.nc',
+        process_dataset_func=partial(datasets.process_bonemarrow, raw_data_dir/'bonemarrow'/'bonemarrow.h5ad'),
+    ))
     _fig.savefig(save_dir/'DatasetBonemarrow.pdf')
     _fig.savefig('DatasetBonemarrow.pdf')
     _fig
@@ -191,10 +230,10 @@ def _():
 
 @app.cell
 def _():
-    # _df = datasets.make_measurement_dataframe(
-    #     *datasets.get_forebrain()
-    # )
-    # _fig, _ax = make_plot_pseudotime(_df)
+    # _fig, _ax = make_plot_pseudotime(datasets.get_dataset(
+    #     processed_file_path=processed_data_dir/'bonemarrow'/'bonemarrow.nc',
+    #     process_dataset_func=partial(datasets.process_dentate_gyrus, raw_data_dir/'bonemarrow'/'bonemarrow.h5ad'),
+    # ))
     # _fig.savefig(save_dir/'DatasetForebrain.pdf')
     # _fig.savefig('DatasetForebrain.pdf')
     # _fig

@@ -1,9 +1,10 @@
-from functools import cache
+from functools import partial
 
 import numpy as np
 import polars as pl
 import scvelo
 import scanpy
+import xarray as xr
 
 
 def make_measurement_dataframe(t, pos, vel):
@@ -14,7 +15,21 @@ def make_measurement_dataframe(t, pos, vel):
     })
 
 
-def generate_simple_motif(rng, measurement_count, initial_noise_scale):
+def make_measurement_dataset(t, pos, vel):
+    return xr.Dataset(
+        data_vars={
+            'velocity': (('measurement', 'component'), np.asarray(vel, dtype=np.float32)),
+            'position': (('measurement', 'component'), np.asarray(pos, dtype=np.float32)),
+        },
+        coords={
+            'measurement': np.arange(len(pos)),
+            'component': [f'x_{i+1}' for i in range(pos.shape[1])],
+            'pseudotime': ('measurement', np.asarray(t, dtype=np.float32)),
+        },
+    )
+
+
+def get_simple_motif(rng, measurement_count, initial_noise_scale):
     t = 3 * rng.random(measurement_count)
     y0 = initial_noise_scale * rng.random(measurement_count)
     x = t
@@ -24,7 +39,7 @@ def generate_simple_motif(rng, measurement_count, initial_noise_scale):
     return t, pos, vel
 
 
-def generate_oscillation_motif(rng, measurement_count, initial_noise_scale):
+def get_oscillation_motif(rng, measurement_count, initial_noise_scale):
     t = 2 * np.pi * rng.random(measurement_count)
     x0 = 1 + initial_noise_scale * (2 * rng.random(measurement_count) - 1)
     x = x0 * np.cos(t)
@@ -34,7 +49,7 @@ def generate_oscillation_motif(rng, measurement_count, initial_noise_scale):
     return t, pos, vel
 
 
-def generate_bifurcation_motif(rng, measurement_count, initial_noise_scale):
+def get_bifurcation_motif(rng, measurement_count, initial_noise_scale):
     t = 6 * rng.random(measurement_count)
     y0 = 1 + initial_noise_scale * (rng.random(measurement_count) / 2 + 0.5) * (2 * rng.binomial(1, 0.5, size=measurement_count) - 1)
     x = t
@@ -44,7 +59,7 @@ def generate_bifurcation_motif(rng, measurement_count, initial_noise_scale):
     return t, pos, vel
 
 
-def generate_detransition_motif(rng, measurement_count, initial_noise_scale):
+def get_detransition_motif(rng, measurement_count, initial_noise_scale):
     T = 5
     n_steps = 5_000
     dt = T / n_steps
@@ -73,38 +88,56 @@ def generate_detransition_motif(rng, measurement_count, initial_noise_scale):
     return t, pos, vel
 
 
-def process_scvelo(dataset_func):
-    data = dataset_func()
-    scvelo.preprocessing.filter_genes(data, min_shared_cells=20)  # scanpy.preprocessing.filter_genes(adata)
-    scvelo.preprocessing.normalize_per_cell(data)
-    scanpy.preprocessing.log1p(data)
-    scanpy.preprocessing.highly_variable_genes(data, n_top_genes=2000, subset=True)  # scanpy.preprocessing.filter_genes_dispersion(data, n_top_genes=2000)
+def process_scvelo(raw_data):
+    scvelo.preprocessing.filter_genes(raw_data, min_shared_cells=20)  # scanpy.preprocessing.filter_genes(adata)
+    scvelo.preprocessing.normalize_per_cell(raw_data)
+    scanpy.preprocessing.log1p(raw_data)
+    scanpy.preprocessing.highly_variable_genes(raw_data, n_top_genes=2000, subset=True)  # scanpy.preprocessing.filter_genes_dispersion(data, n_top_genes=2000)
 
-    scanpy.preprocessing.neighbors(data, n_neighbors=30)
-    scvelo.preprocessing.moments(data, n_pcs=30)
+    scanpy.preprocessing.neighbors(raw_data, n_neighbors=30)
+    scvelo.preprocessing.moments(raw_data, n_pcs=30)
 
-    scanpy.tools.umap(data, n_components=2)
+    scanpy.tools.umap(raw_data, n_components=2)
 
-    scvelo.tools.velocity(data)
-    scvelo.tools.velocity_graph(data)
-    scvelo.tools.velocity_embedding(data, basis='umap')
-    scvelo.tools.velocity_pseudotime(data)
+    scvelo.tools.velocity(raw_data)
+    scvelo.tools.velocity_graph(raw_data)
+    scvelo.tools.velocity_embedding(raw_data, basis='umap')
+    scvelo.tools.velocity_pseudotime(raw_data)
 
-    t = data.obs.velocity_pseudotime
-    pos = data.obsm['X_umap']
-    vel = data.obsm['velocity_umap']
+    t = raw_data.obs.velocity_pseudotime
+    pos = raw_data.obsm['X_umap']
+    vel = raw_data.obsm['velocity_umap']
 
     return t, pos, vel
 
 
-@cache
-def get_dentate_gyrus():
-    return process_scvelo(scvelo.datasets.dentategyrus)
+def get_dataset(processed_file_path, process_dataset_func=None):
+    try:
+        with xr.open_dataset(processed_file_path) as ds:
+            return ds.load()
+    except FileNotFoundError as e:
+        if process_dataset_func is None:
+            raise e
+
+    ds = make_measurement_dataset(*process_dataset_func())
+    processed_file_path.parent.mkdir(parents=True, exist_ok=True)
+    ds.to_netcdf(processed_file_path)
+    return ds
 
 
-@cache
-def get_bonemarrow():
-    return process_scvelo(scvelo.datasets.bonemarrow)
+def process_pancreas(raw_file_path):
+    raw_data = scvelo.datasets.pancreas(file_path=raw_file_path)
+    return process_scvelo(raw_data)
+
+
+def process_dentate_gyrus(raw_file_path):
+    raw_data = scvelo.datasets.dentategyrus(file_path=raw_file_path)
+    return process_scvelo(raw_data)
+
+
+def process_bonemarrow(raw_file_path):
+    raw_data = scvelo.datasets.bonemarrow(file_path=raw_file_path)
+    return process_scvelo(raw_data)
 
 
 # def download_forebrain():
@@ -122,36 +155,8 @@ def get_bonemarrow():
 #         f.close()
 
 
-@cache
-def get_forebrain():
+def process_forebrain():
     return process_scvelo(scvelo.datasets.forebrain)
-
-
-@cache
-def get_pancreas():
-    return process_scvelo(scvelo.datasets.pancreas)
-    data = scvelo.datasets.pancreas()
-    # scvelo.preprocessing.filter_and_normalize(adata, min_shared_cells=20)
-    scvelo.preprocessing.filter_genes(data, min_shared_cells=20)  # scanpy.preprocessing.filter_genes(adata)
-    scvelo.preprocessing.normalize_per_cell(data)
-    scanpy.preprocessing.log1p(data)
-    scanpy.preprocessing.highly_variable_genes(data, n_top_genes=2000)  # scanpy.preprocessing.filter_genes_dispersion(data, n_top_genes=2000)
-
-    scanpy.preprocessing.neighbors(data, n_neighbors=30)
-    scvelo.preprocessing.moments(data, n_pcs=30)
-
-    scanpy.tools.umap(data, n_components=2)
-
-    scvelo.tools.velocity(data)
-    scvelo.tools.velocity_graph(data)
-    scvelo.tools.velocity_embedding(data, basis='umap')
-    scvelo.tools.velocity_pseudotime(data)
-
-    t = data.obs.velocity_pseudotime
-    pos = data.obsm['X_umap']
-    vel = data.obsm['velocity_umap']
-
-    return t, pos, vel
 
 
 if __name__ == '__main__':
