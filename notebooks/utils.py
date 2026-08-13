@@ -1,9 +1,11 @@
 import os
 import sys
-import pathlib
+from pathlib import Path
 
 
-DIR_ROOT = pathlib.Path(__file__).resolve().parent.parent
+DIR_ROOT = Path(__file__).resolve().parent.parent
+DIR_OUT = Path('/home/ttransue/out/django-velocityPrediction')
+DIR_RUNS = DIR_OUT/'runs'
 
 
 def initialize_django_in_notebook(settings_module='project.settings', project_dir=DIR_ROOT):

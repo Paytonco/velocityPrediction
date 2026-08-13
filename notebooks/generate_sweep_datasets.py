@@ -24,26 +24,28 @@ with app.setup:
 
 
 @app.function
-def get_latest_commit():
+def get_git_commit():
     return GitCommit.objects.order_by('-commit_time').first()
 
 
 @app.cell
 def _():
-    get_latest_commit()
+    get_git_commit()
     return
 
 
 @app.cell
 def _():
-    pgs = ParameterGroup.objects.filter(parameter_group_name__startswith='dataset_file')
+    pgs = ParameterGroup.objects.filter(parameter_group_name__startswith='file_dataset')
     mo.ui.table(pgs.values())
     return (pgs,)
 
 
 @app.function
 def get_tags():
-    return Tag.objects.none()
+    return [
+        Tag.objects.get_or_create(tag_value='SweepSparsityStepNeighborCount')[0]
+    ]
 
 
 @app.cell
@@ -67,45 +69,12 @@ def _(pgs):
         model=models.SavedDatasetFile,
         parameter_model=models.SavedDatasetFileParameter,
         parameters=build_parameters_by_group(pgs),
-        model_kwargs=dict(git_commit=get_latest_commit()),
+        model_kwargs=dict(
+            git_commit_created=get_git_commit(),
+            git_commit_valid_for=get_git_commit(),
+        ),
         tags=get_tags(),
     )
-    return
-
-
-@app.cell
-def _():
-    {p.parameter.parameter_name: p.parse() for p in models.SavedDatasetFileParameter.objects.all()}
-    return
-
-
-@app.cell
-def _():
-    sf = models.SavedDatasetFile.objects.first()
-    models.SavedDatasetFileParameter.objects.filter(saved_dataset_file=sf)
-    return (sf,)
-
-
-@app.cell
-def _():
-    raw_data_dir = utils.DIR_ROOT/'data'
-    processed_data_dir = raw_data_dir/'processed'
-    processed_data_dir.mkdir(parents=True, exist_ok=True)
-    return processed_data_dir, raw_data_dir
-
-
-@app.cell
-def _(sf):
-    sf.alt_id
-    return
-
-
-@app.cell
-def _(processed_data_dir, raw_data_dir, sf):
-    _params = {p.parameter.parameter_name: p.parse() for p in sf.saveddatasetfileparameter_set.all()}
-    print(_params)
-    ds = datasets.get_dataset(processed_data_dir/f'{sf.alt_id}.nc', partial(datasets.process_pancreas, raw_data_dir/f'{sf.alt_id}.h5ad', **_params))
-    ds
     return
 
 
