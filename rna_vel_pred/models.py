@@ -28,7 +28,7 @@ class Experiment(tracker_models.Experiment):
         return f'{self.alt_id} [{", ".join(tags)}] ({", ".join(parameter_group_names)})'
 
     def run_dir(self):
-        return (settings.BASE_DIR/'../..').resolve()/'out/django-velocityPrediction/runs'/self.alt_id
+        return settings.DIR_RUNS / self.alt_id
 
 
 class ExperimentParameter(tracker_models.ParameterValue):

@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from django_experiment_tracker.models import GitCommit
@@ -35,19 +35,21 @@ class ExperimentCommandTestCase(TestCase):
         self.temporary_directory = TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)
         temporary_directory = Path(self.temporary_directory.name)
-        runs_patch = patch.object(
-            Experiment,
-            "run_dir",
-            lambda experiment: temporary_directory / experiment.alt_id,
-        )
-        runs_patch.start()
-        self.addCleanup(runs_patch.stop)
+        settings_override = override_settings(DIR_RUNS=temporary_directory)
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
         commit_patch = patch(
             "rna_vel_pred.management.commands.run_experiment.Command._get_current_commit",
             return_value=self.experiment.git_commit_valid_for,
         )
         self.get_current_commit = commit_patch.start()
         self.addCleanup(commit_patch.stop)
+
+    def test_run_dir_uses_configured_runs_directory(self):
+        self.assertEqual(
+            self.experiment.run_dir(),
+            settings.DIR_RUNS / self.experiment.alt_id,
+        )
 
     @patch("rna_vel_pred.management.commands.run_experiment.subprocess.run")
     def test_run_experiment_records_completion_and_redirects_output(self, run):

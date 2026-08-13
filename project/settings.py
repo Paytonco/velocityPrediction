@@ -14,6 +14,9 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+DIR_OUT = (BASE_DIR / "../.." / "out/django-velocityPrediction").resolve()
+DIR_DATA = DIR_OUT/'data'
+DIR_RUNS = DIR_OUT/'runs'
 
 
 # Quick-start development settings - unsuitable for production
