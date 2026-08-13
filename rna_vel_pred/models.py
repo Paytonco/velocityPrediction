@@ -1,6 +1,8 @@
 from django.db import models
 from django_experiment_tracker import models as tracker_models
 
+from rna_vel_pred import utils
+
 
 class SavedDatasetFile(tracker_models.SharedFile):
     def __str__(self):
@@ -17,8 +19,17 @@ class SavedDatasetFileParameter(tracker_models.ParameterValue):
 
 class Experiment(tracker_models.Experiment):
     def __str__(self):
-        parameter_group_names = tracker_models.ParameterGroup.objects.filter(experimentparameter__in=self.experimentparameter_set.all()).values_list("parameter_group_name", flat=True).distinct()
-        return f'{self.alt_id} ({", ".join(parameter_group_names)})'
+        parameter_group_names = (
+            tracker_models.ParameterGroup.objects.filter(experimentparameter__in=self.experimentparameter_set.all())
+            .exclude(parameter_group_name='-ungrouped-')
+            .values_list("parameter_group_name", flat=True)
+            .distinct()
+        )
+        tags = self.tags.values_list('tag_value', flat=True)
+        return f'{self.alt_id} [{", ".join(tags)}] ({", ".join(parameter_group_names)})'
+
+    def run_dir(self):
+        return utils.DIR_RUNS/self.alt_id
 
 
 class ExperimentParameter(tracker_models.ParameterValue):
