@@ -818,6 +818,7 @@ requires-dist = [{ name = "django", specifier = ">=5.2.14" }]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "marimo", specifier = ">=0.23.16" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-django", specifier = ">=4.11.1" },
 ]
