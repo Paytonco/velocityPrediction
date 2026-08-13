@@ -88,7 +88,7 @@ def get_detransition_motif(rng, measurement_count, initial_noise_scale):
     return t, pos, vel
 
 
-def process_scvelo(raw_data):
+def process_scvelo(raw_data, umap_dimension):
     scvelo.preprocessing.filter_genes(raw_data, min_shared_cells=20)  # scanpy.preprocessing.filter_genes(adata)
     scvelo.preprocessing.normalize_per_cell(raw_data)
     scanpy.preprocessing.log1p(raw_data)
@@ -97,10 +97,10 @@ def process_scvelo(raw_data):
     scanpy.preprocessing.neighbors(raw_data, n_neighbors=30)
     scvelo.preprocessing.moments(raw_data, n_pcs=30)
 
-    scanpy.tools.umap(raw_data, n_components=2)
+    scanpy.tools.umap(raw_data, n_components=umap_dimension)
 
     scvelo.tools.velocity(raw_data)
-    scvelo.tools.velocity_graph(raw_data)
+    scvelo.tools.velocity_graph(raw_data, show_progress_bar=False)
     scvelo.tools.velocity_embedding(raw_data, basis='umap')
     scvelo.tools.velocity_pseudotime(raw_data)
 
@@ -125,9 +125,9 @@ def get_dataset(processed_file_path, process_dataset_func=None):
     return ds
 
 
-def process_pancreas(raw_file_path):
+def process_pancreas(raw_file_path, umap_dimension=2):
     raw_data = scvelo.datasets.pancreas(file_path=raw_file_path)
-    return process_scvelo(raw_data)
+    return process_scvelo(raw_data, umap_dimension)
 
 
 def process_dentate_gyrus(raw_file_path):
@@ -160,7 +160,26 @@ def process_forebrain():
 
 
 if __name__ == '__main__':
-    _measurement_count = 4000
-    _rng = np.random.default_rng(seed=42)
-    dataset = make_measurement_dataset(*get_simple_motif(_rng, _measurement_count, 0.05))
-    print(dataset)
+    pass
+    # _measurement_count = 4000
+    # _rng = np.random.default_rng(seed=42)
+    # dataset = make_measurement_dataset(*get_simple_motif(_rng, _measurement_count, 0.05))
+    # print(dataset)
+    import os
+    import utils
+    if not os.getenv('DJANGO_SETTINGS_MODULE'):
+        utils.initialize_django_in_notebook()
+
+    from rna_vel_pred import models
+    sf = models.SavedDatasetFile.objects.first()
+    print(sf.alt_id)
+    raw_data_dir = utils.DIR_ROOT/'data'
+    processed_data_dir = raw_data_dir/'processed'
+    processed_data_dir.mkdir(parents=True, exist_ok=True)
+    _params = {p.parameter.parameter_name: p.parse() for p in sf.saveddatasetfileparameter_set.all()}
+    print(_params)
+    ds = get_dataset(
+        processed_data_dir/f'{sf.alt_id}.nc',
+        partial(process_pancreas, raw_data_dir/f'{sf.alt_id}.h5ad', **_params)
+    )
+    print(ds)
