@@ -1,43 +1,32 @@
 from django.contrib import admin
 
-from django_experiment_tracker import models as tracker_models
 from rna_vel_pred import models
 
 
-@admin.register(tracker_models.GitCommit)
-class GitCommitAdmin(admin.ModelAdmin):
-    pass
-
-
-class ParameterEnumValueInline(admin.TabularInline):
-    model = tracker_models.ParameterEnumValue
-    min_num = 1
-    extra = 0
-
-
-@admin.register(tracker_models.ParameterEnum)
-class ParameterEnumAdmin(admin.ModelAdmin):
-    inlines = [
-        ParameterEnumValueInline,
-    ]
-
-
-class ParameterGroupInline(admin.TabularInline):
-    model = tracker_models.ParameterGroup.parameters.through
+class SavedDatasetFileTagAdmin(admin.TabularInline):
+    model = models.SavedDatasetFile.tags.through
     min_num = 0
     extra = 0
 
 
-@admin.register(tracker_models.Parameter)
-class ParameterAdmin(admin.ModelAdmin):
+class SavedDatasetFileParameterAdmin(admin.TabularInline):
+    model = models.SavedDatasetFileParameter
+    min_num = 1
+    extra = 0
+
+
+@admin.register(models.SavedDatasetFile)
+class SavedDatasetFileAdmin(admin.ModelAdmin):
     inlines = [
-        ParameterGroupInline,
+        SavedDatasetFileParameterAdmin,
+        # SavedDatasetFileTagAdmin,
     ]
 
 
-@admin.register(tracker_models.ParameterGroup)
-class ParameterGroupAdmin(admin.ModelAdmin):
-    pass
+class ExperimentTagAdmin(admin.TabularInline):
+    model = models.Experiment.tags.through
+    min_num = 0
+    extra = 0
 
 
 class ExperimentParameterAdmin(admin.TabularInline):
@@ -50,9 +39,5 @@ class ExperimentParameterAdmin(admin.TabularInline):
 class ExperimentAdmin(admin.ModelAdmin):
     inlines = [
         ExperimentParameterAdmin,
+        # ExperimentTagAdmin,
     ]
-
-
-@admin.register(tracker_models.Tag)
-class TagAdmin(admin.ModelAdmin):
-    pass
