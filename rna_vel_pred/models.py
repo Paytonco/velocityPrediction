@@ -1,7 +1,6 @@
+from django.conf import settings
 from django.db import models
 from django_experiment_tracker import models as tracker_models
-
-from rna_vel_pred import utils
 
 
 class SavedDatasetFile(tracker_models.SharedFile):
@@ -29,7 +28,7 @@ class Experiment(tracker_models.Experiment):
         return f'{self.alt_id} [{", ".join(tags)}] ({", ".join(parameter_group_names)})'
 
     def run_dir(self):
-        return utils.DIR_RUNS/self.alt_id
+        return (settings.BASE_DIR/'../..').resolve()/'out/django-velocityPrediction/runs'/self.alt_id
 
 
 class ExperimentParameter(tracker_models.ParameterValue):
