@@ -11,8 +11,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from django_experiment_tracker.models import GitCommit
-from rna_vel_pred import utils
+from rna_vel_pred.management.commands.run_experiment import Command as RunExperimentCommand
 from rna_vel_pred.models import Experiment
+
+get_current_commit = RunExperimentCommand._get_current_commit
 
 
 class ExperimentCommandTestCase(TestCase):
@@ -32,7 +34,12 @@ class ExperimentCommandTestCase(TestCase):
     def setUp(self):
         self.temporary_directory = TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)
-        runs_patch = patch.object(utils, "DIR_RUNS", Path(self.temporary_directory.name))
+        temporary_directory = Path(self.temporary_directory.name)
+        runs_patch = patch.object(
+            Experiment,
+            "run_dir",
+            lambda experiment: temporary_directory / experiment.alt_id,
+        )
         runs_patch.start()
         self.addCleanup(runs_patch.stop)
         commit_patch = patch(
@@ -148,12 +155,32 @@ class ExperimentCommandTestCase(TestCase):
 
         run.assert_called_once()
 
-    @patch("rna_vel_pred.management.commands.train_experiment.training.train")
-    def test_train_experiment_passes_model_to_trainer(self, train):
-        call_command("train_experiment", self.experiment.alt_id)
+    def test_git_preflight_excludes_sqlite_database(self):
+        command = RunExperimentCommand()
+        with patch.object(
+            command,
+            "_git",
+            side_effect=["", self.experiment.git_commit_valid_for.commit_sha],
+        ) as git:
+            current_commit = get_current_commit(command)
 
-        train.assert_called_once()
-        self.assertEqual(train.call_args.args[0].pk, self.experiment.pk)
+        self.assertEqual(current_commit, self.experiment.git_commit_valid_for)
+        self.assertEqual(
+            git.call_args_list[0].args,
+            (
+                "status",
+                "--porcelain",
+                "--",
+                ".",
+                ":(top,exclude)db.sqlite3",
+            ),
+        )
+
+    def test_git_preflight_rejects_other_changes(self):
+        command = RunExperimentCommand()
+        with patch.object(command, "_git", return_value=" M rna_vel_pred/models.py"):
+            with self.assertRaisesMessage(CommandError, "uncommitted changes"):
+                get_current_commit(command)
 
     def test_train_experiment_rejects_unknown_experiment(self):
         with self.assertRaisesMessage(CommandError, "does not exist"):

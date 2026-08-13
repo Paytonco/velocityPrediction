@@ -68,7 +68,13 @@ class Command(BaseCommand):
         )
 
     def _get_current_commit(self):
-        if self._git("status", "--porcelain"):
+        if self._git(
+            "status",
+            "--porcelain",
+            "--",
+            ".",
+            ":(top,exclude)db.sqlite3",
+        ):
             raise CommandError("Cannot run an experiment with uncommitted changes")
 
         commit_sha = self._git("rev-parse", "HEAD")
