@@ -41,7 +41,7 @@ class RnaVelPredConfig(AppConfig):
             'dentate_gyrus',
         )
         for ds in scvelo_datasets:
-            pg, pg_created = tracker_models.ParameterGroup.objects.get_or_create(parameter_group_name=f'dataset_file_{ds}')
+            pg, pg_created = tracker_models.ParameterGroup.objects.get_or_create(parameter_group_name=f'file_dataset_{ds}')
             if pg_created:
                 pg.parameters.set(scvelo_dataset_file_parameters)
 
@@ -60,7 +60,7 @@ class RnaVelPredConfig(AppConfig):
 
         scvelo_dataset_parameters = graph_dataset_parameters + (
             tracker_models.Parameter.objects.get_or_create(
-                parameter_name='dataset_file_alt_id',
+                parameter_name='file_dataset_alt_id',
                 parameter_type=tracker_models.ParameterType.STRING,
                 parameter_default_value='???',
             )[0],
