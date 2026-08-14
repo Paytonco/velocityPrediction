@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'rna_vel_pred',
 ]
 
+EXPERIMENT_TRACKER_EXPERIMENT_MODEL = 'rna_vel_pred.Experiment'
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
