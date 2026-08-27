@@ -32,8 +32,8 @@ def _():
 
 @app.cell
 def _():
-    ds_pgs = ParameterGroup.objects.filter(parameter_group_name__startswith='dataset').exclude(parameter_group_name__startswith='dataset_file')
-    other_pgs = ParameterGroup.objects.filter(parameter_group_name__in=['-ungrouped-'])
+    ds_pgs = ParameterGroup.objects.filter(parameter_group_name__startswith='dataset')
+    other_pgs = ParameterGroup.objects.exclude(parameter_group_name__startswith='dataset').exclude(parameter_group_name__startswith='file_dataset')
     mo.ui.table((other_pgs | ds_pgs).values())
     return ds_pgs, other_pgs
 
